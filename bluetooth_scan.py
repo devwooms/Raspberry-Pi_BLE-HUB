@@ -172,17 +172,21 @@ def connect_device(adapter_addr, device_mac):
     # 어댑터 선택
     subprocess.run(["bluetoothctl", "select", adapter_addr], capture_output=True)
     
-    # 페어링 시도
-    pair_result = subprocess.run(["bluetoothctl", "pair", device_mac], capture_output=True, text=True, timeout=15)
-    
-    # 연결 시도
-    connect_result = subprocess.run(["bluetoothctl", "connect", device_mac], capture_output=True, text=True, timeout=15)
-    
-    if "successful" in connect_result.stdout.lower():
-        print(f"[{device_mac}] 연결 성공!")
-        return True
-    else:
-        print(f"[{device_mac}] 연결 실패. 출력: {connect_result.stdout}")
+    try:
+        # 페어링 시도
+        pair_result = subprocess.run(["bluetoothctl", "pair", device_mac], capture_output=True, text=True, timeout=15)
+        
+        # 연결 시도
+        connect_result = subprocess.run(["bluetoothctl", "connect", device_mac], capture_output=True, text=True, timeout=15)
+        
+        if "successful" in connect_result.stdout.lower():
+            print(f"[{device_mac}] 연결 성공!")
+            return True
+        else:
+            print(f"[{device_mac}] 연결 실패. 출력: {connect_result.stdout}")
+            return False
+    except subprocess.TimeoutExpired:
+        print(f"[{device_mac}] 연결 시간이 초과되었습니다. (15초)")
         return False
 
 def disconnect_device(adapter_addr, device_mac):

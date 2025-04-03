@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import os
+import subprocess
 
 # 자체 모듈 import
 from checkbluetoothlist import list_bluetooth_adapters
@@ -76,6 +77,14 @@ def main():
         except KeyboardInterrupt:
             print("\n\n스캔이 사용자에 의해 중단되었습니다.")
             return
+        except Exception as e:
+            print(f"\n스캔 중 오류가 발생했습니다: {e}")
+            retry = input("다시 시도하시겠습니까? (y/n, 기본: y): ").lower()
+            if retry != 'n':
+                continue
+            else:
+                print("\n프로그램을 종료합니다.")
+                return
         
         if not devices:
             print("발견된 블루투스 기기가 없습니다. 다시 시도해보세요.")
@@ -83,7 +92,7 @@ def main():
         
         print("\n===== 발견된 블루투스 기기 =====")
         print("--------------------------------")
-        print("0. ReScan")  # 0번 선택지를 "재검색"으로 변경
+        print("0. 재검색")  # 0번 선택지를 "재검색"으로 변경
         for i, mac, name in devices:
             print(f"{i+1}. {name} - {mac}")  # 인덱스를 1부터 시작하도록 변경
         print("--------------------------------\n")
@@ -104,41 +113,65 @@ def main():
                     print(f"\n{selected_device[2]}({selected_device[1]})에 연결을 시도합니다...")
                     
                     # 연결 시도
-                    connect_success = connect_device(recv_adapter[1], selected_device[1])
-                    
-                    if connect_success:
-                        print("\n===== 연결 성공 =====")
-                        print(f"수신용 어댑터({recv_adapter[1]})와 {selected_device[2]}({selected_device[1]})가 연결되었습니다.")
+                    try:
+                        connect_success = connect_device(recv_adapter[1], selected_device[1])
                         
-                        # 설정 저장
-                        try:
-                            save_config(recv_adapter[1], send_adapter[1], selected_device[1])
-                            print("\n설정이 저장되었습니다.")
+                        if connect_success:
+                            print("\n===== 연결 성공 =====")
+                            print(f"수신용 어댑터({recv_adapter[1]})와 {selected_device[2]}({selected_device[1]})가 연결되었습니다.")
                             
-                            # 사용자에게 데몬 시작 여부 묻기
-                            start_daemon = input("\n블루투스 릴레이 데몬을 시작하시겠습니까? (y/n): ").lower()
-                            if start_daemon == 'y':
-                                if start_relay_daemon():
-                                    print("\n설정이 완료되었습니다! 시스템이 계속 실행됩니다.")
-                                else:
-                                    print("\n데몬 시작 실패. 수동으로 시작하려면 다음 명령을 실행하세요:")
-                                    print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
-                            else:
-                                print("\n데몬을 시작하지 않았습니다. 나중에 다음 명령으로 시작할 수 있습니다:")
-                                print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
+                            # 설정 저장
+                            try:
+                                save_config(recv_adapter[1], send_adapter[1], selected_device[1])
+                                print("\n설정이 저장되었습니다.")
                                 
-                            return  # 성공적으로 연결되었으므로 프로그램 종료
-                        except Exception as e:
-                            print(f"\n설정 저장 오류: {e}")
-                            print("설정을 저장할 수 없습니다. 수동으로 릴레이를 설정해야 합니다.")
-                            return
-                    else:
-                        print("\n===== 연결 실패 =====")
-                        print("연결에 실패했습니다. 다른 기기를 선택하거나 다시 스캔해 보세요.")
+                                # 사용자에게 데몬 시작 여부 묻기
+                                start_daemon = input("\n블루투스 릴레이 데몬을 시작하시겠습니까? (y/n): ").lower()
+                                if start_daemon == 'y':
+                                    if start_relay_daemon():
+                                        print("\n설정이 완료되었습니다! 시스템이 계속 실행됩니다.")
+                                    else:
+                                        print("\n데몬 시작 실패. 수동으로 시작하려면 다음 명령을 실행하세요:")
+                                        print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
+                                else:
+                                    print("\n데몬을 시작하지 않았습니다. 나중에 다음 명령으로 시작할 수 있습니다:")
+                                    print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
+                                    
+                                return  # 성공적으로 연결되었으므로 프로그램 종료
+                            except Exception as e:
+                                print(f"\n설정 저장 오류: {e}")
+                                print("설정을 저장할 수 없습니다. 수동으로 릴레이를 설정해야 합니다.")
+                                return
+                        else:
+                            print("\n===== 연결 실패 =====")
+                            print("연결에 실패했습니다. 다른 기기를 선택하거나 다시 스캔해 보세요.")
+                            retry = input("다시 스캔하시겠습니까? (y/n, 기본: y): ").lower()
+                            if retry != 'n':
+                                break  # 내부 루프를 빠져나가 다시 스캔
+                            # 'n'을 입력하면 프로그램을 종료합니다
+                            else:
+                                print("\n프로그램을 종료합니다.")
+                                return
+                    
+                    except subprocess.TimeoutExpired:
+                        print("\n===== 연결 시간 초과 =====")
+                        print("연결 시간이 초과되었습니다(15초). 장치가 페어링 모드인지 확인하거나 다른 장치를 선택하세요.")
                         retry = input("다시 스캔하시겠습니까? (y/n, 기본: y): ").lower()
                         if retry != 'n':
                             break  # 내부 루프를 빠져나가 다시 스캔
-                        # 'n'을 입력하면 현재 목록에서 다시 선택할 수 있음
+                        else:
+                            print("\n프로그램을 종료합니다.")
+                            return
+                            
+                    except Exception as e:
+                        print(f"\n===== 연결 중 오류 발생 =====")
+                        print(f"오류 정보: {e}")
+                        retry = input("다시 스캔하시겠습니까? (y/n, 기본: y): ").lower()
+                        if retry != 'n':
+                            break  # 내부 루프를 빠져나가 다시 스캔
+                        else:
+                            print("\n프로그램을 종료합니다.")
+                            return
                 else:
                     print("입력한 번호가 범위를 벗어났습니다. 다시 입력해주세요.")
             except ValueError:
@@ -146,4 +179,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"\n프로그램 실행 중 오류가 발생했습니다: {e}")
+        print("프로그램을 종료합니다.")
