@@ -53,67 +53,96 @@ def main():
     print(f" - 송신용: {send_adapter[1]} ({send_adapter[2]})")
     print("--------------------------------\n")
     
-    # 수신용 어댑터로 기기 스캔
-    print("\n===== 주변 블루투스 기기 스캔 =====\n")
-    scan_time = int(input("스캔 시간(초)을 입력하세요 (기본 10초): ") or "10")
-    devices = scan_devices(recv_adapter[1], timeout=scan_time)
-    
-    if not devices:
-        print("발견된 블루투스 기기가 없습니다.")
-        return
-    
-    print("\n===== 발견된 블루투스 기기 =====")
-    print("--------------------------------")
-    for i, mac, name in devices:
-        print(f"{i}. {mac} - {name}")
-    print("--------------------------------\n")
-    
-    # 연결할 기기 선택
+    # 기기 스캔 및 선택 루프
     while True:
-        device_idx = input("연결할 마우스/기기 번호를 입력하세요: ")
-        try:
-            device_idx = int(device_idx)
-            if 0 <= device_idx < len(devices):
-                break
-            else:
-                print("입력한 번호가 범위를 벗어났습니다. 다시 입력해주세요.")
-        except ValueError:
-            print("유효한 숫자가 아닙니다. 다시 입력해주세요.")
-    
-    # 선택한 기기에 연결
-    selected_device = devices[device_idx]
-    print(f"\n{selected_device[2]}({selected_device[1]})에 연결을 시도합니다...")
-    
-    # 연결 시도
-    connect_success = connect_device(recv_adapter[1], selected_device[1])
-    
-    if connect_success:
-        print("\n===== 연결 성공 =====")
-        print(f"수신용 어댑터({recv_adapter[1]})와 {selected_device[2]}({selected_device[1]})가 연결되었습니다.")
+        # 수신용 어댑터로 기기 스캔
+        print("\n===== 주변 블루투스 기기 스캔 =====\n")
+        print("스캔 시간이 길수록 더 많은 기기를 발견할 수 있습니다.")
+        print("기본값은 10초입니다. (최소 5초, 최대 60초)\n")
         
-        # 설정 저장
         try:
-            save_config(recv_adapter[1], send_adapter[1], selected_device[1])
-            print("\n설정이 저장되었습니다.")
+            scan_time_input = input("스캔 시간(초)을 입력하세요 [기본 10초]: ")
+            scan_time = 10  # 기본값
             
-            # 사용자에게 데몬 시작 여부 묻기
-            start_daemon = input("\n블루투스 릴레이 데몬을 시작하시겠습니까? (y/n): ").lower()
-            if start_daemon == 'y':
-                if start_relay_daemon():
-                    print("\n설정이 완료되었습니다! 시스템이 계속 실행됩니다.")
-                else:
-                    print("\n데몬 시작 실패. 수동으로 시작하려면 다음 명령을 실행하세요:")
-                    print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
-            else:
-                print("\n데몬을 시작하지 않았습니다. 나중에 다음 명령으로 시작할 수 있습니다:")
-                print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
+            if scan_time_input.strip():  # 사용자가 값을 입력했을 경우
+                scan_time = int(scan_time_input)
+                scan_time = max(5, min(60, scan_time))  # 5~60초 범위로 제한
                 
-        except Exception as e:
-            print(f"\n설정 저장 오류: {e}")
-            print("설정을 저장할 수 없습니다. 수동으로 릴레이를 설정해야 합니다.")
-    else:
-        print("\n===== 연결 실패 =====")
-        print("연결에 실패했습니다. 다시 시도하거나 기기 설정을 확인해보세요.")
+            print(f"\n{scan_time}초 동안 스캔을 시작합니다...\n")
+            devices = scan_devices(recv_adapter[1], timeout=scan_time)
+        except ValueError:
+            print("유효한 숫자가 아닙니다. 기본값(10초)으로 스캔합니다.")
+            devices = scan_devices(recv_adapter[1], timeout=10)
+        except KeyboardInterrupt:
+            print("\n\n스캔이 사용자에 의해 중단되었습니다.")
+            return
+        
+        if not devices:
+            print("발견된 블루투스 기기가 없습니다. 다시 시도해보세요.")
+            continue  # 다시 스캔 시작
+        
+        print("\n===== 발견된 블루투스 기기 =====")
+        print("--------------------------------")
+        print("0. ReScan")  # 0번 선택지를 "재검색"으로 변경
+        for i, mac, name in devices:
+            print(f"{i+1}. {name} - {mac}")  # 인덱스를 1부터 시작하도록 변경
+        print("--------------------------------\n")
+        
+        # 연결할 기기 선택
+        while True:
+            device_idx_input = input("연결할 마우스/기기 번호를 입력하세요 (0: 다시 스캔): ")
+            try:
+                device_idx = int(device_idx_input)
+                if device_idx == 0:
+                    print("\n다시 스캔을 시작합니다...\n")
+                    break  # 내부 루프를 빠져나가 다시 스캔
+                elif 1 <= device_idx <= len(devices):
+                    # 사용자 인덱스(1부터 시작)에서 실제 인덱스(0부터 시작)로 변환
+                    device_idx -= 1
+                    # 선택한 기기에 연결
+                    selected_device = devices[device_idx]
+                    print(f"\n{selected_device[2]}({selected_device[1]})에 연결을 시도합니다...")
+                    
+                    # 연결 시도
+                    connect_success = connect_device(recv_adapter[1], selected_device[1])
+                    
+                    if connect_success:
+                        print("\n===== 연결 성공 =====")
+                        print(f"수신용 어댑터({recv_adapter[1]})와 {selected_device[2]}({selected_device[1]})가 연결되었습니다.")
+                        
+                        # 설정 저장
+                        try:
+                            save_config(recv_adapter[1], send_adapter[1], selected_device[1])
+                            print("\n설정이 저장되었습니다.")
+                            
+                            # 사용자에게 데몬 시작 여부 묻기
+                            start_daemon = input("\n블루투스 릴레이 데몬을 시작하시겠습니까? (y/n): ").lower()
+                            if start_daemon == 'y':
+                                if start_relay_daemon():
+                                    print("\n설정이 완료되었습니다! 시스템이 계속 실행됩니다.")
+                                else:
+                                    print("\n데몬 시작 실패. 수동으로 시작하려면 다음 명령을 실행하세요:")
+                                    print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
+                            else:
+                                print("\n데몬을 시작하지 않았습니다. 나중에 다음 명령으로 시작할 수 있습니다:")
+                                print(f"  python3 {os.path.join(os.path.dirname(__file__), 'ble_relay.py')} start")
+                                
+                            return  # 성공적으로 연결되었으므로 프로그램 종료
+                        except Exception as e:
+                            print(f"\n설정 저장 오류: {e}")
+                            print("설정을 저장할 수 없습니다. 수동으로 릴레이를 설정해야 합니다.")
+                            return
+                    else:
+                        print("\n===== 연결 실패 =====")
+                        print("연결에 실패했습니다. 다른 기기를 선택하거나 다시 스캔해 보세요.")
+                        retry = input("다시 스캔하시겠습니까? (y/n, 기본: y): ").lower()
+                        if retry != 'n':
+                            break  # 내부 루프를 빠져나가 다시 스캔
+                        # 'n'을 입력하면 현재 목록에서 다시 선택할 수 있음
+                else:
+                    print("입력한 번호가 범위를 벗어났습니다. 다시 입력해주세요.")
+            except ValueError:
+                print("유효한 숫자가 아닙니다. 다시 입력해주세요.")
 
 
 if __name__ == "__main__":
