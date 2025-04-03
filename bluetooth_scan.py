@@ -173,20 +173,56 @@ def connect_device(adapter_addr, device_mac):
     subprocess.run(["bluetoothctl", "select", adapter_addr], capture_output=True)
     
     try:
-        # 페어링 시도
-        pair_result = subprocess.run(["bluetoothctl", "pair", device_mac], capture_output=True, text=True, timeout=15)
+        # 이전 연결 해제 (연결 문제가 있을 경우 도움이 될 수 있음)
+        subprocess.run(["bluetoothctl", "disconnect", device_mac], capture_output=True, timeout=5)
+        time.sleep(1)
+        
+        # 신뢰 설정 (이 단계가 연결 안정성을 높일 수 있음)
+        trust_result = subprocess.run(["bluetoothctl", "trust", device_mac], 
+                                     capture_output=True, text=True, timeout=5)
+        
+        if "trusted" in trust_result.stdout.lower():
+            print(f"[{device_mac}] 신뢰 설정 완료")
+        
+        # 페어링 시도 
+        print(f"[{device_mac}] 페어링 시도 중...")
+        pair_result = subprocess.run(["bluetoothctl", "pair", device_mac], 
+                                    capture_output=True, text=True, timeout=15)
+        
+        # 성공 또는 이미 페어링된 경우
+        if "successful" in pair_result.stdout.lower() or "already paired" in pair_result.stdout.lower():
+            print(f"[{device_mac}] 페어링 완료")
+        
+        # 잠시 대기 (연결 안정화)
+        time.sleep(2)
         
         # 연결 시도
-        connect_result = subprocess.run(["bluetoothctl", "connect", device_mac], capture_output=True, text=True, timeout=15)
+        print(f"[{device_mac}] 연결 시도 중...")
+        connect_result = subprocess.run(["bluetoothctl", "connect", device_mac], 
+                                       capture_output=True, text=True, timeout=15)
         
+        # 성공 여부 확인
         if "successful" in connect_result.stdout.lower():
             print(f"[{device_mac}] 연결 성공!")
             return True
         else:
+            # 실패했을 경우 정보 출력
             print(f"[{device_mac}] 연결 실패. 출력: {connect_result.stdout}")
+            
+            # 연결 실패 후 수동 확인 (연결은 성공했지만 메시지가 다를 수 있음)
+            time.sleep(2)
+            if check_device_connected(adapter_addr, device_mac):
+                print(f"[{device_mac}] 연결 상태 확인: 실제로 연결되어 있습니다!")
+                return True
+                
             return False
+            
     except subprocess.TimeoutExpired:
         print(f"[{device_mac}] 연결 시간이 초과되었습니다. (15초)")
+        # 타임아웃 후 연결 상태 확인
+        if check_device_connected(adapter_addr, device_mac):
+            print(f"[{device_mac}] 타임아웃이 발생했지만 실제로 연결되어 있습니다!")
+            return True
         return False
 
 def disconnect_device(adapter_addr, device_mac):
