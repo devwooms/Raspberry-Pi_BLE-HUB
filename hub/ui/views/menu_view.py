@@ -73,4 +73,9 @@ class MenuView:
     
     def wait_for_input(self):
         """사용자 입력 대기"""
-        input("\n계속하려면 Enter 키를 누르세요...") 
+        input("\n계속하려면 Enter 키를 누르세요...")
+        
+    def clear_screen(self):
+        """화면 지우기"""
+        import os
+        os.system('cls' if os.name == 'nt' else 'clear') 

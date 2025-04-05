@@ -9,6 +9,8 @@ from ui.views.menu_view import MenuView
 from ui.models.device_model import DeviceModel
 from core.daemon.daemon_controller import DaemonController
 from core.bluetooth.scanner import BluetoothScanner
+from core.bluetooth.module_manager import BluetoothModuleManager
+from ui.controllers.module_selector import ModuleSelector
 
 class TerminalMenu:
     """터미널 메뉴 클래스"""
@@ -20,11 +22,15 @@ class TerminalMenu:
         self.daemon_controller = DaemonController()
         self.menu_view = MenuView()
         self.bluetooth_scanner = BluetoothScanner()
+        
+        # 모듈화된 컴포넌트 초기화
+        self.module_manager = BluetoothModuleManager(self.bluetooth_scanner, self.device_model)
+        self.module_selector = ModuleSelector(self.module_manager, self.menu_view)
     
     def main_menu(self):
         """메인 메뉴 표시"""
         while True:
-            self._clear_screen()
+            self.menu_view.clear_screen()
             
             # 상태 정보 가져오기
             daemon_status = self.daemon_controller.get_status()
@@ -62,7 +68,7 @@ class TerminalMenu:
     def daemon_menu(self):
         """데몬 관리 메뉴"""
         while True:
-            self._clear_screen()
+            self.menu_view.clear_screen()
             self.menu_view.show_header("데몬 관리")
             
             # 데몬 상태 표시
@@ -105,7 +111,7 @@ class TerminalMenu:
     def bluetooth_menu(self):
         """블루투스 관리 메뉴"""
         while True:
-            self._clear_screen()
+            self.menu_view.clear_screen()
             self.menu_view.show_header("블루투스 관리")
             
             # 메뉴 옵션 표시 - 그룹으로 나누고 헤더 추가
@@ -127,7 +133,11 @@ class TerminalMenu:
             
             if choice == "1":
                 self.show_bluetooth_modules()
-            elif choice in ["2", "3", "4", "5", "6"]:
+            elif choice == "2":
+                self.module_selector.select_source_module()
+            elif choice == "5":
+                self.module_selector.select_target_module()
+            elif choice in ["3", "4", "6"]:
                 self.menu_view.show_message("기능이 준비 중입니다.")
                 self.menu_view.wait_for_input()
             elif choice == "0":
@@ -138,36 +148,5 @@ class TerminalMenu:
     
     def show_bluetooth_modules(self):
         """블루투스 모듈 목록 표시"""
-        self._clear_screen()
-        self.menu_view.show_header("블루투스 모듈 목록")
-        
-        # 블루투스 인터페이스 스캔
-        interfaces = self.bluetooth_scanner.get_bluetooth_interfaces()
-        
-        if not interfaces:
-            self.menu_view.show_message("\n블루투스 모듈을 찾을 수 없습니다.")
-        else:
-            print("\n발견된 블루투스 모듈:")
-            print("\n{:<5} {:<10} {:<20}".format("번호", "인터페이스", "MAC 주소"))
-            print("-" * 40)
-            
-            for idx, interface in enumerate(interfaces, 1):
-                print("{:<5} {:<10} {:<20}".format(
-                    idx, 
-                    interface['name'], 
-                    interface['mac']
-                ))
-                
-            # 현재 설정된 모듈 표시
-            source_module = self.device_model.get_source_module()
-            target_module = self.device_model.get_target_module()
-            
-            print("\n현재 선택된 모듈:")
-            print(f"수신용: {source_module if source_module else '없음'}")
-            print(f"송신용: {target_module if target_module else '없음'}")
-            
-        self.menu_view.wait_for_input()
-    
-    def _clear_screen(self):
-        """화면 지우기"""
-        os.system('cls' if os.name == 'nt' else 'clear') 
+        interfaces = self.module_selector.display_module_list()
+        self.menu_view.wait_for_input() 
