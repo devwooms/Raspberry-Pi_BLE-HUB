@@ -78,6 +78,7 @@ class TerminalMenu:
             options = {
                 "1": "블루투스 관리",
                 "2": "데몬 관리",
+                "3": "수신-송신 연결",
                 "0": "종료"
             }
             self.menu_view.show_menu_options(options)
@@ -88,6 +89,8 @@ class TerminalMenu:
                 self.daemon_menu()
             elif choice == "1":
                 self.bluetooth_menu()
+            elif choice == "3":
+                self.connection_menu()
             elif choice == "0":
                 print("프로그램을 종료합니다.")
                 break
@@ -194,4 +197,121 @@ class TerminalMenu:
             for i, device in enumerate(receiving_devices):
                 self.menu_view.show_message(f"{i+1}. {device['name']} - {device['mac']}")
         
-        self.menu_view.wait_for_input() 
+        self.menu_view.wait_for_input()
+    
+    def connection_menu(self):
+        """수신-송신 연결 메뉴"""
+        while True:
+            self.menu_view.clear_screen()
+            self.menu_view.show_header("수신-송신 연결")
+            
+            # 현재 상태 정보 표시
+            source_module = self.device_model.get_source_module()
+            target_module = self.device_model.get_target_module()
+            receiving_devices = self.device_model.get_receiving_devices()
+            transmitting_device = self.device_model.get_transmitting_device()
+            
+            # 연결 상태 정보 표시
+            self.menu_view.show_message("\n== 연결 상태 ==")
+            source_info = f"{source_module}" if source_module else "설정되지 않음"
+            target_info = f"{target_module}" if target_module else "설정되지 않음"
+            self.menu_view.show_message(f"수신용 블루투스 모듈: {source_info}")
+            self.menu_view.show_message(f"송신용 블루투스 모듈: {target_info}")
+            
+            # 연결된 디바이스 정보
+            if receiving_devices:
+                self.menu_view.show_message("\n== 수신 디바이스 ==")
+                for i, device in enumerate(receiving_devices):
+                    self.menu_view.show_message(f"{i+1}. {device['name']} ({device['mac']})")
+            else:
+                self.menu_view.show_message("\n수신 디바이스 없음")
+                
+            self.menu_view.show_message("\n== 송신 디바이스 ==")
+            if transmitting_device:
+                self.menu_view.show_message(f"{transmitting_device['name']} ({transmitting_device['mac']})")
+            else:
+                self.menu_view.show_message("설정되지 않음")
+            
+            # 메뉴 옵션 표시
+            options = {
+                "1": "수신-송신 연결 시작",
+                "2": "수신-송신 연결 해제",
+                "0": "이전 메뉴로 돌아가기"
+            }
+            self.menu_view.show_menu_options(options)
+            
+            choice = input("\n선택: ")
+            
+            if choice == "1":
+                self.start_connection()
+            elif choice == "2":
+                self.stop_connection()
+            elif choice == "0":
+                break
+            else:
+                self.menu_view.show_error("잘못된 선택입니다. 다시 시도하세요.")
+                self.menu_view.wait_for_input()
+    
+    def start_connection(self):
+        """수신-송신 연결 시작"""
+        self.menu_view.clear_screen()
+        self.menu_view.show_header("수신-송신 연결 시작")
+        
+        # 기본 검증
+        if not self._validate_connection_requirements():
+            return
+            
+        # 구현 예정 메시지
+        self.menu_view.show_message("\n연결 시작 기능은 아직 구현 중입니다...")
+        self.menu_view.wait_for_input()
+    
+    def stop_connection(self):
+        """수신-송신 연결 해제"""
+        self.menu_view.clear_screen()
+        self.menu_view.show_header("수신-송신 연결 해제")
+        
+        # 기본 검증
+        if not self._validate_connection_requirements():
+            return
+            
+        # 구현 예정 메시지
+        self.menu_view.show_message("\n연결 해제 기능은 아직 구현 중입니다...")
+        self.menu_view.wait_for_input()
+    
+    def _validate_connection_requirements(self):
+        """연결에 필요한 요구사항 검증
+        
+        Returns:
+            bool: 검증 성공 여부
+        """
+        # 모듈 확인
+        source_module = self.device_model.get_source_module()
+        target_module = self.device_model.get_target_module()
+        receiving_devices = self.device_model.get_receiving_devices()
+        transmitting_device = self.device_model.get_transmitting_device()
+        
+        if not source_module:
+            self.menu_view.show_error("수신용 블루투스 모듈이 설정되지 않았습니다.")
+            self.menu_view.show_message("블루투스 관리 메뉴에서 수신용 모듈을 먼저 설정하세요.")
+            self.menu_view.wait_for_input()
+            return False
+            
+        if not target_module:
+            self.menu_view.show_error("송신용 블루투스 모듈이 설정되지 않았습니다.")
+            self.menu_view.show_message("블루투스 관리 메뉴에서 송신용 모듈을 먼저 설정하세요.")
+            self.menu_view.wait_for_input()
+            return False
+            
+        if not receiving_devices:
+            self.menu_view.show_error("수신 디바이스가 설정되지 않았습니다.")
+            self.menu_view.show_message("블루투스 관리 메뉴에서 수신 디바이스를 먼저 추가하세요.")
+            self.menu_view.wait_for_input()
+            return False
+            
+        if not transmitting_device:
+            self.menu_view.show_error("송신 디바이스가 설정되지 않았습니다.")
+            self.menu_view.show_message("블루투스 관리 메뉴에서 송신 디바이스를 먼저 선택하세요.")
+            self.menu_view.wait_for_input()
+            return False
+            
+        return True 
