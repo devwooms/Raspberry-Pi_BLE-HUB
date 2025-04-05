@@ -13,7 +13,7 @@ import atexit
 class BluetoothRelayDaemon:
     """블루투스 릴레이 데몬 클래스"""
     
-    def __init__(self, pid_file='/tmp/blehub.pid', stdout='/dev/null', stderr='/dev/null'):
+    def __init__(self, pid_file='blehub.pid', stdout='blehub.log', stderr='blehub_error.log'):
         """데몬 초기화
         
         Args:
@@ -44,7 +44,7 @@ class BluetoothRelayDaemon:
         os.setsid()
         
         # 작업 디렉토리 변경
-        os.chdir('/')
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
         
         # 파일 생성 마스크 설정
         os.umask(0)
@@ -63,7 +63,7 @@ class BluetoothRelayDaemon:
         sys.stdout.flush()
         sys.stderr.flush()
         
-        si = open('/dev/null', 'r')
+        si = open(os.devnull, 'r')
         so = open(self.stdout, 'a+')
         se = open(self.stderr, 'a+')
         

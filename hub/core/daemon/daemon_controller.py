@@ -15,7 +15,7 @@ class DaemonController:
     
     def __init__(self):
         """데몬 컨트롤러 초기화"""
-        self.pid_file = "/tmp/blehub.pid"
+        self.pid_file = "blehub.pid"
         self.daemon_status = "중지됨"
         
         # 시작 시 PID 파일 확인으로 상태 초기화
