@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import os
 import sys
 import argparse
+import logging
+from datetime import datetime
 
-from blehub.utils.logger import logger, set_log_level
+from blehub.utils.logger import setup_logger, set_log_level
 from blehub.configs.config_manager import ConfigManager
 from blehub.daemon.manager import DaemonManager
-from blehub.bluetooth.scanner import (
-    list_bluetooth_modules,
-    select_bluetooth_module,
-    select_bluetooth_interface,
-    select_bluetooth_device
-)
+from blehub.bluetooth.scanner import BluetoothScanner, select_bluetooth_device, select_bluetooth_interface, select_bluetooth_module, list_bluetooth_modules
 
 """
 BLE-HUB 터미널 메뉴 모듈
 
 명령줄 인터페이스를 제공합니다.
 """
+
+# 로그 설정
+logger = setup_logger("terminal_menu", "blehub.log")
 
 class TerminalMenu:
     """터미널 메뉴 클래스"""
@@ -40,22 +41,53 @@ class TerminalMenu:
             # 데몬 상태 표시
             if daemon_status["running"]:
                 print("✅ 데몬 상태: 실행 중")
-                print(f"   소스 어댑터: {daemon_status.get('source_adapter', 'Unknown')}")
-                print(f"   타겟 어댑터: {daemon_status.get('target_adapter', 'Unknown')}")
-                
-                # 수신 디바이스 목록 표시 (여러 개 가능)
-                source_devices = daemon_status.get('source_devices', [])
-                if source_devices:
-                    print("   수신 디바이스 목록:")
-                    for i, device in enumerate(source_devices, 1):
-                        print(f"     {i}. {device.get('name', 'Unknown')} - {device.get('mac', 'Unknown')}")
-                else:
-                    print("   수신 디바이스: 설정되지 않음")
-                
-                # 송신 디바이스 표시
-                print(f"   송신 디바이스: {daemon_status.get('target_device', 'Unknown')}")
             else:
                 print("⚠️  데몬 상태: 중지됨")
+                
+            # 블루투스 모듈 정보 표시
+            source_adapter = daemon_status.get('source_adapter', 'Unknown')
+            source_adapter_mac = "Unknown"
+            target_adapter = daemon_status.get('target_adapter', 'Unknown')
+            target_adapter_mac = "Unknown"
+            
+            # 어댑터의 MAC 주소 가져오기
+            interfaces = BluetoothScanner.get_bluetooth_interfaces()
+            for interface in interfaces:
+                if interface.get('id') == source_adapter:
+                    source_adapter_mac = interface.get('mac', 'Unknown')
+                if interface.get('id') == target_adapter:
+                    target_adapter_mac = interface.get('mac', 'Unknown')
+            
+            print(f"수신 블루투스 모듈: {source_adapter} - {source_adapter_mac}")
+            print(f"송신 블루투스 모듈: {target_adapter} - {target_adapter_mac}")
+            
+            # 수신 디바이스 목록 표시 (여러 개 가능)
+            source_devices = daemon_status.get('source_devices', [])
+            print("수신 블루투스 디바이스:")
+            if source_devices:
+                for i, device in enumerate(source_devices, 1):
+                    device_name = device.get('name', 'Unknown')
+                    device_mac = device.get('mac', 'Unknown')
+                    device_type = BluetoothScanner.get_device_type(device_name, device_mac)
+                    print(f"  {i}. {device_type} - {device_mac}")
+            else:
+                print("  설정된 디바이스 없음")
+            
+            # 송신 디바이스 표시
+            target_device_mac = daemon_status.get('target_device', '')
+            print("송신 블루투스 디바이스:")
+            if target_device_mac and target_device_mac != '알 수 없음':
+                # 설정에서 디바이스 정보 찾기
+                target_device_name = "Unknown"
+                config = self.config_manager.get_full_config()
+                # 검색된 디바이스 캐시가 있으면 사용
+                if 'device_cache' in config and target_device_mac in config['device_cache']:
+                    target_device_name = config['device_cache'][target_device_mac]
+                    
+                device_type = BluetoothScanner.get_device_type(target_device_name, target_device_mac)
+                print(f"  1. {device_type} - {target_device_mac}")
+            else:
+                print("  설정된 디바이스 없음")
             
             print("\n메뉴:")
             print("1. 데몬 관리")
@@ -94,22 +126,53 @@ class TerminalMenu:
             # 데몬 상태 표시
             if daemon_status["running"]:
                 print("✅ 데몬 상태: 실행 중")
-                print(f"   소스 어댑터: {daemon_status.get('source_adapter', 'Unknown')}")
-                print(f"   타겟 어댑터: {daemon_status.get('target_adapter', 'Unknown')}")
-                
-                # 수신 디바이스 목록 표시 (여러 개 가능)
-                source_devices = daemon_status.get('source_devices', [])
-                if source_devices:
-                    print("   수신 디바이스 목록:")
-                    for i, device in enumerate(source_devices, 1):
-                        print(f"     {i}. {device.get('name', 'Unknown')} - {device.get('mac', 'Unknown')}")
-                else:
-                    print("   수신 디바이스: 설정되지 않음")
-                
-                # 송신 디바이스 표시
-                print(f"   송신 디바이스: {daemon_status.get('target_device', 'Unknown')}")
             else:
                 print("⚠️  데몬 상태: 중지됨")
+                
+            # 블루투스 모듈 정보 표시
+            source_adapter = daemon_status.get('source_adapter', 'Unknown')
+            source_adapter_mac = "Unknown"
+            target_adapter = daemon_status.get('target_adapter', 'Unknown')
+            target_adapter_mac = "Unknown"
+            
+            # 어댑터의 MAC 주소 가져오기
+            interfaces = BluetoothScanner.get_bluetooth_interfaces()
+            for interface in interfaces:
+                if interface.get('id') == source_adapter:
+                    source_adapter_mac = interface.get('mac', 'Unknown')
+                if interface.get('id') == target_adapter:
+                    target_adapter_mac = interface.get('mac', 'Unknown')
+            
+            print(f"수신 블루투스 모듈: {source_adapter} - {source_adapter_mac}")
+            print(f"송신 블루투스 모듈: {target_adapter} - {target_adapter_mac}")
+            
+            # 수신 디바이스 목록 표시 (여러 개 가능)
+            source_devices = daemon_status.get('source_devices', [])
+            print("수신 블루투스 디바이스:")
+            if source_devices:
+                for i, device in enumerate(source_devices, 1):
+                    device_name = device.get('name', 'Unknown')
+                    device_mac = device.get('mac', 'Unknown')
+                    device_type = BluetoothScanner.get_device_type(device_name, device_mac)
+                    print(f"  {i}. {device_type} - {device_mac}")
+            else:
+                print("  설정된 디바이스 없음")
+            
+            # 송신 디바이스 표시
+            target_device_mac = daemon_status.get('target_device', '')
+            print("송신 블루투스 디바이스:")
+            if target_device_mac and target_device_mac != '알 수 없음':
+                # 설정에서 디바이스 정보 찾기
+                target_device_name = "Unknown"
+                config = self.config_manager.get_full_config()
+                # 검색된 디바이스 캐시가 있으면 사용
+                if 'device_cache' in config and target_device_mac in config['device_cache']:
+                    target_device_name = config['device_cache'][target_device_mac]
+                    
+                device_type = BluetoothScanner.get_device_type(target_device_name, target_device_mac)
+                print(f"  1. {device_type} - {target_device_mac}")
+            else:
+                print("  설정된 디바이스 없음")
             
             print("\n메뉴:")
             print("1. 데몬 시작")
@@ -160,12 +223,11 @@ class TerminalMenu:
             
             print("\n메뉴:")
             print("1. 블루투스 모듈 목록 표시")
-            print("2. 블루투스 모듈 선택")
-            print("3. 소스 블루투스 인터페이스 선택")
-            print("4. 타겟 블루투스 인터페이스 선택")
-            print("5. 수신 블루투스 디바이스 추가")
-            print("6. 수신 블루투스 디바이스 삭제")
-            print("7. 송신 블루투스 디바이스 선택")
+            print("2. 소스 블루투스 인터페이스 선택")
+            print("3. 타겟 블루투스 인터페이스 선택")
+            print("4. 수신 블루투스 디바이스 추가")
+            print("5. 수신 블루투스 디바이스 삭제")
+            print("6. 송신 블루투스 디바이스 선택")
             print("0. 이전 메뉴로 돌아가기")
             
             choice = input("\n선택: ")
@@ -174,12 +236,6 @@ class TerminalMenu:
                 list_bluetooth_modules()
                 input("\n계속하려면 Enter 키를 누르세요...")
             elif choice == "2":
-                module = select_bluetooth_module()
-                if module:
-                    print(f"\n선택된 모듈: {module['description']}")
-                    # 필요한 경우 추가 작업 수행
-                input("\n계속하려면 Enter 키를 누르세요...")
-            elif choice == "3":
                 interface = select_bluetooth_interface()
                 if interface:
                     print(f"\n선택된 인터페이스: {interface['id']}")
@@ -187,7 +243,7 @@ class TerminalMenu:
                     self.config_manager.save()
                     print(f"소스 어댑터가 {interface['id']}로 설정되었습니다.")
                 input("\n계속하려면 Enter 키를 누르세요...")
-            elif choice == "4":
+            elif choice == "3":
                 interface = select_bluetooth_interface()
                 if interface:
                     print(f"\n선택된 인터페이스: {interface['id']}")
@@ -195,16 +251,26 @@ class TerminalMenu:
                     self.config_manager.save()
                     print(f"타겟 어댑터가 {interface['id']}로 설정되었습니다.")
                 input("\n계속하려면 Enter 키를 누르세요...")
-            elif choice == "5":
+            elif choice == "4":
                 # 수신 디바이스를 스캔하기 위해 소스 어댑터 확인
                 source_adapter = self.config_manager.get("source_adapter", "hci0")
                 device = select_bluetooth_device(source_adapter)
                 if device:
                     print(f"\n선택된 디바이스: {device['name']} ({device['mac']})")
+                    
+                    # 장치 페어링 및 연결 시도
+                    print(f"\n{device['name']} 장치와 페어링 및 연결 시도 중...")
+                    if BluetoothScanner.pair_and_connect_device(source_adapter, device['mac']):
+                        print(f"\n{device['name']} 장치와 페어링 및 연결 성공!")
+                    else:
+                        print(f"\n{device['name']} 장치와 페어링 및 연결 실패")
+                        print("하지만 장치 정보는 추가합니다.")
+                    
+                    # 설정에 장치 추가
                     self.config_manager.add_source_device(device)
                     print(f"수신 디바이스 '{device['name']}'이(가) 추가되었습니다.")
                 input("\n계속하려면 Enter 키를 누르세요...")
-            elif choice == "6":
+            elif choice == "5":
                 # 수신 디바이스 목록 표시 및 삭제
                 source_devices = self.config_manager.get("source_devices", [])
                 if not source_devices:
@@ -220,6 +286,13 @@ class TerminalMenu:
                             device_index = int(device_choice) - 1
                             if 0 <= device_index < len(source_devices):
                                 device = source_devices[device_index]
+                                source_adapter = self.config_manager.get("source_adapter", "hci0")
+                                
+                                # 장치 연결 해제 및 페어링 제거
+                                print(f"\n{device['name']} 장치 연결 해제 및 제거 중...")
+                                BluetoothScanner.disconnect_and_remove_device(source_adapter, device['mac'])
+                                
+                                # 설정에서 장치 제거
                                 self.config_manager.remove_source_device(device['mac'])
                                 print(f"\n수신 디바이스 '{device['name']}'이(가) 삭제되었습니다.")
                             else:
@@ -228,15 +301,29 @@ class TerminalMenu:
                             print("\n잘못된 입력입니다.")
                 
                 input("\n계속하려면 Enter 키를 누르세요...")
-            elif choice == "7":
+            elif choice == "6":
                 # 송신 디바이스를 스캔하기 위해 타겟 어댑터 확인
                 target_adapter = self.config_manager.get("target_adapter", "hci0")
                 device = select_bluetooth_device(target_adapter)
                 if device:
                     print(f"\n선택된 디바이스: {device['name']} ({device['mac']})")
+                    
+                    # 장치 페어링 및 연결 시도
+                    print(f"\n{device['name']} 장치와 페어링 및 연결 시도 중...")
+                    if BluetoothScanner.pair_and_connect_device(target_adapter, device['mac']):
+                        print(f"\n{device['name']} 장치와 페어링 및 연결 성공!")
+                    else:
+                        print(f"\n{device['name']} 장치와 페어링 및 연결 실패")
+                        print("하지만 장치 정보는 등록합니다.")
+                    
+                    # 디바이스를 캐시에 추가
+                    self.config_manager.cache_device(device)
+                    
+                    # 타겟 디바이스 설정
                     self.config_manager.set("target_device", device['mac'])
-                    self.config_manager.save()
-                    print(f"송신 디바이스가 {device['name']}({device['mac']})로 설정되었습니다.")
+                    
+                    device_type = BluetoothScanner.get_device_type(device['name'], device['mac'])
+                    print(f"송신 디바이스가 {device_type}({device['mac']})로 설정되었습니다.")
                 input("\n계속하려면 Enter 키를 누르세요...")
             elif choice == "0":
                 break

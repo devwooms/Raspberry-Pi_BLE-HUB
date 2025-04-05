@@ -36,6 +36,7 @@ class ConfigManager:
             'target_adapter': None,     # 송신용 블루투스 어댑터
             'source_devices': [],       # 수신 디바이스 목록 (여러 개 가능)
             'target_device': None,      # 송신 대상 디바이스
+            'device_cache': {},         # MAC 주소를 키로 하는 디바이스 이름 캐시
             'daemon_settings': {        # 데몬 관련 설정
                 'pid_file': os.path.join(os.path.dirname(os.path.dirname(self.config_path)), "blehub.pid"),
                 'log_level': 'INFO'
@@ -95,6 +96,12 @@ class ConfigManager:
             bool: 성공 여부
         """
         self.config[key] = value
+        
+        # 디바이스 MAC 주소가 설정되었고 캐시에 있으면 캐시에서 이름 가져오기
+        if key == 'target_device' and value and 'device_cache' in self.config and value in self.config['device_cache']:
+            # 해당 MAC 주소가 캐시에 있으면 캐시 정보 갱신
+            pass
+        
         return self.save()
     
     def update(self, new_config):
@@ -136,7 +143,25 @@ class ConfigManager:
             self.config['source_devices'] = []
         
         self.config['source_devices'].append(device)
+        
+        # 디바이스 캐시에 추가
+        self.cache_device(device)
+        
         return self.save()
+    
+    def cache_device(self, device):
+        """디바이스 정보를 캐시에 저장합니다
+        
+        Args:
+            device (dict): 블루투스 장치 정보 (name, mac 포함)
+        """
+        if 'mac' in device and 'name' in device:
+            # 디바이스 캐시가 없으면 초기화
+            if 'device_cache' not in self.config:
+                self.config['device_cache'] = {}
+            
+            # 캐시에 추가
+            self.config['device_cache'][device['mac']] = device['name']
     
     def remove_source_device(self, mac_address):
         """수신 디바이스를 제거합니다
@@ -170,6 +195,7 @@ class ConfigManager:
             'target_adapter': None,     # 송신용 블루투스 어댑터
             'source_devices': [],       # 수신 디바이스 목록 (여러 개 가능)
             'target_device': None,      # 송신 대상 디바이스
+            'device_cache': {},         # MAC 주소를 키로 하는 디바이스 이름 캐시
             'daemon_settings': {        # 데몬 관련 설정
                 'pid_file': os.path.join(os.path.dirname(os.path.dirname(self.config_path)), "blehub.pid"),
                 'log_level': 'INFO'

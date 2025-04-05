@@ -66,5 +66,39 @@ def main():
     success = process_arguments(args)
     sys.exit(0 if success else 1)
 
+def parse_arguments():
+    """명령줄 인수 파싱
+    
+    Returns:
+        argparse.Namespace: 파싱된 인수
+    """
+    parser = argparse.ArgumentParser(description="BLE-HUB 블루투스 릴레이 데몬 관리")
+    
+    # 데몬 관리 인수
+    parser.add_argument('--start', action='store_true', help='데몬 시작')
+    parser.add_argument('--stop', action='store_true', help='데몬 중지')
+    parser.add_argument('--restart', action='store_true', help='데몬 재시작')
+    parser.add_argument('--status', action='store_true', help='데몬 상태 확인')
+    parser.add_argument('--daemon', action='store_true', help='데몬 모드로 실행')
+    
+    # 블루투스 관리 인수
+    parser.add_argument('--list-modules', action='store_true', help='블루투스 모듈 목록 표시')
+    parser.add_argument('--select-module', action='store_true', help='블루투스 모듈 선택')
+    
+    # 설정 인수
+    parser.add_argument('--config', action='store_true', help='설정 표시')
+    parser.add_argument('--set-source', type=str, help='소스 어댑터 설정')
+    parser.add_argument('--set-target-adapter', type=str, help='타겟 어댑터 설정')
+    parser.add_argument('--set-target-device', type=str, help='타겟 장치 설정')
+    
+    # 로그 인수
+    parser.add_argument('--log-level', type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='로그 레벨 설정')
+    
+    # 메뉴 인수
+    parser.add_argument('--menu', action='store_true', help='터미널 메뉴 실행')
+    
+    return parser.parse_args()
+
 if __name__ == "__main__":
     main() 

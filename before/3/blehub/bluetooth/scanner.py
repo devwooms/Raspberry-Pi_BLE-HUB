@@ -6,6 +6,11 @@ import time
 
 from blehub.utils.logger import logger
 
+try:
+    from blehub.configs.config_manager import get_config_manager
+except ImportError:
+    get_config_manager = None
+
 """
 BLE-HUB 블루투스 스캐너 모듈
 
@@ -359,12 +364,196 @@ class BluetoothScanner:
             result = subprocess.run(
                 [command] + args,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                stderr=subprocess.PIPE
             )
             return result.returncode == 0
         except Exception:
             return False
+    
+    @staticmethod
+    def pair_and_connect_device(interface_id, device_mac):
+        """블루투스 장치와 페어링하고 연결합니다
+        
+        Args:
+            interface_id (str): 블루투스 인터페이스 ID
+            device_mac (str): 장치 MAC 주소
+            
+        Returns:
+            bool: 성공 여부
+        """
+        logger.info(f"장치 {device_mac}와 페어링 및 연결 시도 중...")
+        
+        try:
+            # 인터페이스 활성화
+            subprocess.run(
+                ["hciconfig", interface_id, "up"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # bluetoothctl 명령 실행
+            commands = [
+                "agent on",
+                f"remove {device_mac}",  # 기존 페어링 제거
+                f"scan on",
+                f"scan off",
+                f"pair {device_mac}",
+                f"trust {device_mac}",
+                f"connect {device_mac}",
+                "quit"
+            ]
+            
+            process = subprocess.Popen(
+                ["bluetoothctl"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # 명령어 실행
+            output = ""
+            for cmd in commands:
+                process.stdin.write(cmd + "\n")
+                process.stdin.flush()
+                
+                if cmd == "scan on":
+                    # 스캔 5초 대기
+                    time.sleep(5)
+            
+            # 결과 읽기
+            stdout, stderr = process.communicate()
+            output = stdout
+            
+            # 연결 성공 여부 확인
+            if "Connection successful" in output or "Connected: yes" in output:
+                logger.info(f"장치 {device_mac} 연결 성공")
+                return True
+            
+            # 연결 상태 확인
+            info_process = subprocess.Popen(
+                ["bluetoothctl", "info", device_mac],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            info_output, _ = info_process.communicate()
+            
+            if "Connected: yes" in info_output:
+                logger.info(f"장치 {device_mac} 연결 확인됨")
+                return True
+            
+            logger.error(f"장치 {device_mac} 연결 실패: {output}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"장치 페어링 및 연결 중 오류 발생: {e}")
+            return False
+    
+    @staticmethod
+    def disconnect_and_remove_device(interface_id, device_mac):
+        """블루투스 장치 연결을 해제하고 페어링을 제거합니다
+        
+        Args:
+            interface_id (str): 블루투스 인터페이스 ID
+            device_mac (str): 장치 MAC 주소
+            
+        Returns:
+            bool: 성공 여부
+        """
+        logger.info(f"장치 {device_mac} 연결 해제 및 제거 시도 중...")
+        
+        try:
+            # bluetoothctl 명령 실행
+            commands = [
+                f"disconnect {device_mac}",
+                f"remove {device_mac}",
+                "quit"
+            ]
+            
+            process = subprocess.Popen(
+                ["bluetoothctl"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # 명령어 실행
+            for cmd in commands:
+                process.stdin.write(cmd + "\n")
+                process.stdin.flush()
+            
+            # 결과 읽기
+            stdout, stderr = process.communicate()
+            
+            # 성공 여부 확인
+            if "Successful disconnected" in stdout or "Removing device" in stdout:
+                logger.info(f"장치 {device_mac} 연결 해제 및 제거 성공")
+                return True
+            
+            # 장치 확인
+            info_process = subprocess.Popen(
+                ["bluetoothctl", "info", device_mac],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            info_output, _ = info_process.communicate()
+            
+            if "Device" not in info_output or "Connected: no" in info_output:
+                logger.info(f"장치 {device_mac} 연결 해제 확인됨")
+                return True
+            
+            logger.error(f"장치 {device_mac} 연결 해제 실패")
+            return False
+            
+        except Exception as e:
+            logger.error(f"장치 연결 해제 및 제거 중 오류 발생: {e}")
+            return False
+    
+    @staticmethod
+    def get_device_type(name, mac):
+        """디바이스 유형을 추측합니다
+        
+        Args:
+            name (str): 디바이스 이름
+            mac (str): MAC 주소
+            
+        Returns:
+            str: 디바이스 유형 또는 원래 이름
+        """
+        # 소문자로 변환하여 검사
+        name_lower = name.lower() if name else ""
+        
+        # 키보드 관련 키워드
+        if any(keyword in name_lower for keyword in ["keyboard", "키보드", "keeb", "k/b"]):
+            return f"키보드 {name}"
+        
+        # 마우스 관련 키워드
+        if any(keyword in name_lower for keyword in ["mouse", "마우스", "pointer"]):
+            return f"마우스 {name}"
+        
+        # 헤드폰/이어폰 관련 키워드
+        if any(keyword in name_lower for keyword in ["headphone", "headset", "earphone", "earbuds", "헤드폰", "이어폰"]):
+            return f"헤드폰 {name}"
+        
+        # 스피커 관련 키워드
+        if any(keyword in name_lower for keyword in ["speaker", "스피커"]):
+            return f"스피커 {name}"
+        
+        # 컴퓨터/랩탑 관련 키워드
+        if any(keyword in name_lower for keyword in ["computer", "laptop", "pc", "desktop", "컴퓨터", "노트북"]):
+            return f"컴퓨터 {name}"
+        
+        # 스마트폰 관련 키워드
+        if any(keyword in name_lower for keyword in ["phone", "smartphone", "휴대폰", "폰"]):
+            return f"스마트폰 {name}"
+        
+        # 기본값 - 원래 이름 반환
+        return name
 
 # 편의 함수들
 def list_bluetooth_modules():
@@ -510,7 +699,10 @@ def select_bluetooth_device(interface_id="hci0"):
     
     print("검색된 블루투스 장치:")
     for i, device in enumerate(devices, 1):
-        print(f"{i}. {device['name']} - {device['mac']}")
+        device_name = device['name']
+        device_mac = device['mac']
+        device_type = BluetoothScanner.get_device_type(device_name, device_mac)
+        print(f"{i}. {device_type} - {device_mac}")
     
     print("-" * 50)
     
@@ -523,7 +715,18 @@ def select_bluetooth_device(interface_id="hci0"):
         try:
             index = int(choice) - 1
             if 0 <= index < len(devices):
-                return devices[index]
+                selected_device = devices[index]
+                
+                # 설정 관리자가 있으면 디바이스를 캐시에 추가
+                try:
+                    if get_config_manager:
+                        config_manager = get_config_manager()
+                        config_manager.cache_device(selected_device)
+                        config_manager.save()
+                except Exception as e:
+                    logger.warning(f"디바이스 캐싱 중 오류 발생: {e}")
+                
+                return selected_device
             else:
                 print("잘못된 선택입니다. 다시 시도하세요.")
         except ValueError:

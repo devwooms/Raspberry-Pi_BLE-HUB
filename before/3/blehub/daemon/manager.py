@@ -57,55 +57,41 @@ class DaemonManager:
             return False
     
     def start(self):
-        """데몬 시작
+        """데몬 프로세스 시작
         
         Returns:
-            bool: 시작 성공 여부
+            bool: 성공 여부
         """
-        # 이미 실행 중인지 확인
         if self.is_running():
-            logger.warning("데몬이 이미 실행 중입니다.")
+            self.logger.warning("데몬이 이미 실행 중입니다. PID: %s", self.get_pid())
+            return True
+        
+        script_path = os.path.join(os.getcwd(), "blehub_run.py")
+        if not os.path.exists(script_path):
+            self.logger.error(f"스크립트 파일을 찾을 수 없습니다: {script_path}")
             return False
         
-        # 설정 파일 존재 확인
-        config = self._get_config()
-        if not config:
-            logger.error("설정 파일이 존재하지 않거나 정상적이지 않습니다.")
-            return False
-        
-        # 필수 설정 확인
-        if "target_device" not in config:
-            logger.error("타겟 장치가 설정되지 않았습니다.")
-            print("타겟 장치를 먼저 설정해야 합니다.")
-            return False
+        # 데몬 모드 플래그를 추가하여 실행
+        command = f"python3 {script_path} --daemon"
         
         try:
-            # 스크립트 경로 가져오기
-            script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "blehub.py")
-            
-            # 실행 명령 구성
-            cmd = [sys.executable, script_path, "--daemon"]
-            
-            # 백그라운드에서 실행
+            # 백그라운드 실행을 위해 nohup 사용
             process = subprocess.Popen(
-                cmd,
+                command,
+                shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                start_new_session=True
+                preexec_fn=os.setsid
             )
             
-            # 프로세스 시작 확인
-            time.sleep(1)
-            if process.poll() is not None:
-                stderr = process.stderr.read().decode("utf-8")
-                logger.error(f"데몬 시작 실패: {stderr}")
-                return False
+            # PID 파일 생성
+            with open(self.pid_file, 'w') as f:
+                f.write(str(process.pid))
             
-            logger.info("데몬이 시작되었습니다.")
+            self.logger.info("데몬 시작됨. PID: %s", process.pid)
             return True
-            
         except Exception as e:
-            logger.error(f"데몬 시작 중 오류 발생: {e}")
+            self.logger.error("데몬 시작 중 오류 발생: %s", str(e))
             return False
     
     def stop(self):
