@@ -46,12 +46,19 @@ class BluetoothModuleManager:
         
         Args:
             interface_info (dict): 인터페이스 정보 {'name': 'hciX', 'mac': 'XX:XX:XX:XX:XX:XX'}
+            또는 문자열 MAC 주소
             
         Returns:
             bool: 설정 성공 여부
         """
         try:
-            self.device_model.set_source_module(interface_info['mac'])
+            # 문자열이나 딕셔너리 모두 처리 가능하도록
+            if isinstance(interface_info, dict):
+                mac = interface_info['mac']
+            else:
+                mac = interface_info
+                
+            self.device_model.set_source_module(mac)
             return True
         except Exception as e:
             print(f"수신용 모듈 설정 중 오류: {e}")
@@ -62,12 +69,19 @@ class BluetoothModuleManager:
         
         Args:
             interface_info (dict): 인터페이스 정보 {'name': 'hciX', 'mac': 'XX:XX:XX:XX:XX:XX'}
+            또는 문자열 MAC 주소
             
         Returns:
             bool: 설정 성공 여부
         """
         try:
-            self.device_model.set_target_module(interface_info['mac'])
+            # 문자열이나 딕셔너리 모두 처리 가능하도록
+            if isinstance(interface_info, dict):
+                mac = interface_info['mac']
+            else:
+                mac = interface_info
+                
+            self.device_model.set_target_module(mac)
             return True
         except Exception as e:
             print(f"송신용 모듈 설정 중 오류: {e}")

@@ -26,6 +26,30 @@ class TerminalMenu:
         # 모듈화된 컴포넌트 초기화
         self.module_manager = BluetoothModuleManager(self.bluetooth_scanner, self.device_model)
         self.module_selector = ModuleSelector(self.module_manager, self.menu_view)
+        
+        # 프로그램 시작 시 설정 파일에서 블루투스 설정 로드
+        self.load_config()
+    
+    def load_config(self):
+        """설정 파일에서 설정 로드"""
+        # 데몬 컨트롤러의 설정 파일 경로
+        config_file = self.daemon_controller.config_file
+        
+        # 항상 설정 파일 로드 시도 (데몬 상태와 관계없이)
+        if os.path.exists(config_file):
+            print(f"설정 파일 발견: {config_file}")
+            print("블루투스 설정 로드 중...")
+            
+            # 설정 로드
+            if self.daemon_controller._load_config(self.device_model):
+                print("블루투스 설정 로드 성공!")
+            else:
+                print("블루투스 설정 로드 실패!")
+        else:
+            print(f"설정 파일이 없습니다: {config_file}")
+            
+        # 데몬 상태 업데이트
+        self.daemon_controller.get_status(self.device_model)
     
     def main_menu(self):
         """메인 메뉴 표시"""
@@ -33,7 +57,7 @@ class TerminalMenu:
             self.menu_view.clear_screen()
             
             # 상태 정보 가져오기
-            daemon_status = self.daemon_controller.get_status()
+            daemon_status = self.daemon_controller.get_status(self.device_model)
             source_module = self.device_model.get_source_module()
             target_module = self.device_model.get_target_module()
             receiving_devices = self.device_model.get_receiving_devices()
@@ -72,7 +96,7 @@ class TerminalMenu:
             self.menu_view.show_header("데몬 관리")
             
             # 데몬 상태 표시
-            daemon_status = self.daemon_controller.get_status()
+            daemon_status = self.daemon_controller.get_status(self.device_model)
             print(f"\n현재 데몬 상태: {daemon_status}")
             
             # 메뉴 옵션 표시
@@ -88,18 +112,19 @@ class TerminalMenu:
             choice = input("\n선택: ")
             
             if choice == "1":
-                self.daemon_controller.start()
+                self.daemon_controller.start(self.device_model)
                 self.menu_view.show_message("데몬이 시작되었습니다.")
                 self.menu_view.wait_for_input()
             elif choice == "2":
-                self.daemon_controller.stop()
+                self.daemon_controller.stop(self.device_model)
                 self.menu_view.show_message("데몬이 중지되었습니다.")
                 self.menu_view.wait_for_input()
             elif choice == "3":
-                self.daemon_controller.restart()
+                self.daemon_controller.restart(self.device_model)
                 self.menu_view.show_message("데몬이 재시작되었습니다.")
                 self.menu_view.wait_for_input()
             elif choice == "4":
+                daemon_status = self.daemon_controller.get_status(self.device_model)
                 self.menu_view.show_message(f"\n데몬 상태: {daemon_status}")
                 self.menu_view.wait_for_input()
             elif choice == "0":
