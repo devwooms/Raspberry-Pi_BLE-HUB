@@ -11,6 +11,7 @@ from core.daemon.daemon_controller import DaemonController
 from core.bluetooth.scanner import BluetoothScanner
 from core.bluetooth.module_manager import BluetoothModuleManager
 from core.bluetooth.device_manager import BluetoothDeviceManager
+from core.bluetooth.relay_service import BluetoothRelayService
 from ui.controllers.module_selector import ModuleSelector
 from ui.controllers.device_controller import DeviceController
 
@@ -32,6 +33,9 @@ class TerminalMenu:
         # 블루투스 디바이스 관련 컴포넌트 초기화
         self.device_manager = BluetoothDeviceManager(self.bluetooth_scanner)
         self.device_controller = DeviceController(self.device_manager, self.device_model, self.menu_view)
+        
+        # 릴레이 서비스 초기화
+        self.relay_service = BluetoothRelayService()
         
         # 프로그램 시작 시 설정 파일에서 블루투스 설정 로드
         self.load_config()
@@ -232,6 +236,10 @@ class TerminalMenu:
             else:
                 self.menu_view.show_message("설정되지 않음")
             
+            # 릴레이 상태 표시
+            relay_status = "실행 중" if self.relay_service.is_running() else "중지됨"
+            self.menu_view.show_message(f"\n== 릴레이 상태: {relay_status} ==")
+            
             # 메뉴 옵션 표시
             options = {
                 "1": "수신-송신 연결 시작",
@@ -261,8 +269,42 @@ class TerminalMenu:
         if not self._validate_connection_requirements():
             return
             
-        # 구현 예정 메시지
-        self.menu_view.show_message("\n연결 시작 기능은 아직 구현 중입니다...")
+        # 릴레이가 이미 실행 중인지 확인
+        if self.relay_service.is_running():
+            self.menu_view.show_error("릴레이가 이미 실행 중입니다.")
+            self.menu_view.wait_for_input()
+            return
+            
+        # 릴레이 시작
+        source_module = self.device_model.get_source_module()
+        target_module = self.device_model.get_target_module()
+        receiving_devices = self.device_model.get_receiving_devices()
+        transmitting_device = self.device_model.get_transmitting_device()
+        
+        self.menu_view.show_message("\n블루투스 릴레이 설정 중...")
+        self.menu_view.show_message(f"수신 디바이스 {len(receiving_devices)}개를 {transmitting_device['name']}로 릴레이합니다.")
+        
+        # 데몬 상태 확인
+        daemon_status = self.daemon_controller.get_status(self.device_model)
+        if daemon_status != "실행 중":
+            confirm = input("\n데몬이 실행 중이 아닙니다. 데몬을 시작하시겠습니까? (y/n): ")
+            if confirm.lower() == 'y':
+                self.daemon_controller.start(self.device_model)
+            else:
+                self.menu_view.show_message("데몬 시작 없이 릴레이를 시도합니다.")
+        
+        # 릴레이 시작
+        if self.relay_service.start_relay(
+            source_module, 
+            target_module, 
+            receiving_devices, 
+            transmitting_device
+        ):
+            self.menu_view.show_message("\n릴레이가 성공적으로 시작되었습니다!")
+            self.menu_view.show_message("이제 수신 디바이스의 입력이 송신 디바이스로 전달됩니다.")
+        else:
+            self.menu_view.show_error("\n릴레이 시작에 실패했습니다.")
+        
         self.menu_view.wait_for_input()
     
     def stop_connection(self):
@@ -270,12 +312,26 @@ class TerminalMenu:
         self.menu_view.clear_screen()
         self.menu_view.show_header("수신-송신 연결 해제")
         
-        # 기본 검증
-        if not self._validate_connection_requirements():
+        # 릴레이가 실행 중인지 확인
+        if not self.relay_service.is_running():
+            self.menu_view.show_error("릴레이가 실행 중이 아닙니다.")
+            self.menu_view.wait_for_input()
             return
             
-        # 구현 예정 메시지
-        self.menu_view.show_message("\n연결 해제 기능은 아직 구현 중입니다...")
+        # 릴레이 중지
+        self.menu_view.show_message("\n릴레이를 중지 중...")
+        
+        if self.relay_service.stop_relay():
+            self.menu_view.show_message("\n릴레이가 성공적으로 중지되었습니다.")
+            
+            # 데몬 중지 여부 확인
+            confirm = input("데몬도 함께 중지하시겠습니까? (y/n): ")
+            if confirm.lower() == 'y':
+                self.daemon_controller.stop(self.device_model)
+                self.menu_view.show_message("데몬이 중지되었습니다.")
+        else:
+            self.menu_view.show_error("\n릴레이 중지에 실패했습니다.")
+        
         self.menu_view.wait_for_input()
     
     def _validate_connection_requirements(self):
