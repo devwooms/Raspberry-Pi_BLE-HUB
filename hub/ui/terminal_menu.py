@@ -8,6 +8,7 @@ import os
 from ui.views.menu_view import MenuView
 from ui.models.device_model import DeviceModel
 from core.daemon.daemon_controller import DaemonController
+from core.bluetooth.scanner import BluetoothScanner
 
 class TerminalMenu:
     """터미널 메뉴 클래스"""
@@ -18,6 +19,7 @@ class TerminalMenu:
         self.device_model = DeviceModel()
         self.daemon_controller = DaemonController()
         self.menu_view = MenuView()
+        self.bluetooth_scanner = BluetoothScanner()
     
     def main_menu(self):
         """메인 메뉴 표시"""
@@ -120,7 +122,9 @@ class TerminalMenu:
             
             choice = input("\n선택: ")
             
-            if choice in ["1", "2", "3", "4", "5", "6"]:
+            if choice == "1":
+                self.show_bluetooth_modules()
+            elif choice in ["2", "3", "4", "5", "6"]:
                 self.menu_view.show_message("기능이 준비 중입니다.")
                 self.menu_view.wait_for_input()
             elif choice == "0":
@@ -128,6 +132,39 @@ class TerminalMenu:
             else:
                 self.menu_view.show_error("잘못된 선택입니다. 다시 시도하세요.")
                 self.menu_view.wait_for_input()
+    
+    def show_bluetooth_modules(self):
+        """블루투스 모듈 목록 표시"""
+        self._clear_screen()
+        self.menu_view.show_header("블루투스 모듈 목록")
+        
+        # 블루투스 인터페이스 스캔
+        interfaces = self.bluetooth_scanner.get_bluetooth_interfaces()
+        
+        if not interfaces:
+            self.menu_view.show_message("\n블루투스 모듈을 찾을 수 없습니다.")
+        else:
+            print("\n발견된 블루투스 모듈:")
+            print("\n{:<5} {:<10} {:<20} {:<20}".format("번호", "인터페이스", "MAC 주소", "설명"))
+            print("-" * 60)
+            
+            for idx, interface in enumerate(interfaces, 1):
+                print("{:<5} {:<10} {:<20} {:<20}".format(
+                    idx, 
+                    interface['name'], 
+                    interface['mac'], 
+                    interface['type']
+                ))
+                
+            # 현재 설정된 모듈 표시
+            source_module = self.device_model.get_source_module()
+            target_module = self.device_model.get_target_module()
+            
+            print("\n현재 선택된 모듈:")
+            print(f"수신용: {source_module}")
+            print(f"송신용: {target_module}")
+            
+        self.menu_view.wait_for_input()
     
     def _clear_screen(self):
         """화면 지우기"""
