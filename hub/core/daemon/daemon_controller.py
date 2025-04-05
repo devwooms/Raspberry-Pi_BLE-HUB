@@ -48,65 +48,43 @@ class DaemonController:
         
         # 실제 데몬 프로세스 시작
         try:
-            # 데몬 프로세스 실행
+            # 현재 경로 확인
             current_dir = os.getcwd()
             print(f"현재 작업 디렉토리: {current_dir}")
             print(f"데몬 시작 시도 중...")
             
-            # 데몬 프로세스 시작 - 영구적으로 백그라운드에서 실행되는 스크립트
-            daemon_script = """
-import time
-import os
-import sys
-import signal
-import atexit
-
-# 종료 시 정리 함수
-def cleanup():
-    with open('blehub.log', 'a') as f:
-        f.write(f'데몬 종료됨(PID: {os.getpid()})\\n')
-
-# 시그널 핸들러
-def signal_handler(signum, frame):
-    sys.exit(0)
-
-# 시그널 핸들러 등록
-signal.signal(signal.SIGTERM, signal_handler)
-atexit.register(cleanup)
-
-# 데몬 시작 메시지
-pid = os.getpid()
-print(f'데몬 프로세스 시작됨(PID: {pid})')
-with open('blehub.log', 'a') as f:
-    f.write(f'데몬 시작됨(PID: {pid})\\n')
-
-# 무한 루프로 계속 실행
-while True:
-    with open('blehub.log', 'a') as f:
-        f.write(f'데몬 실행 중(PID: {pid})\\n')
-    time.sleep(60)  # 1분마다 로그 기록
-"""
+            # 데몬 프로세스 스크립트 파일 경로
+            daemon_script_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "daemon_process.py"
+            )
             
-            # 데몬 프로세스 시작 (현재 디렉토리에서 실행)
+            print(f"데몬 스크립트 경로: {daemon_script_path}")
+            
+            # 데몬 프로세스 시작
             daemon_process = subprocess.Popen(
-                [sys.executable, "-c", daemon_script],
+                [sys.executable, daemon_script_path, '--pid-file', self.pid_file],
                 stdout=open('blehub.log', 'a'),
                 stderr=subprocess.STDOUT,
                 # 프로세스를 부모로부터 분리 (nohup 효과)
                 start_new_session=True
             )
             
-            # PID 파일에 프로세스 ID 저장
-            with open(self.pid_file, 'w') as f:
-                f.write(str(daemon_process.pid))
+            # 데몬이 PID 파일을 생성할 시간을 줌
+            time.sleep(1)
+            
+            # PID 파일 확인
+            if not os.path.exists(self.pid_file):
+                print("데몬 시작 실패: PID 파일이 생성되지 않았습니다.")
+                return False
             
             self.daemon_status = "실행 중"
             
             # 로그에 기록
             with open('blehub.log', 'a') as f:
-                f.write(f"데몬 컨트롤러에서 데몬 시작됨 (PID: {daemon_process.pid})\n")
+                f.write(f"데몬 컨트롤러에서 데몬 시작됨\n")
                 
-            print(f"데몬 시작됨 (PID: {daemon_process.pid})")
+            print(f"데몬 시작됨")
             return True
         except Exception as e:
             print(f"데몬 시작 중 오류 발생: {e}")
