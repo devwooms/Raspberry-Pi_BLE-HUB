@@ -239,8 +239,20 @@ def setup_recv_bluetooth():
     """수신용 블루투스를 설정합니다"""
     logger.info("수신용 블루투스 설정을 시작합니다...")
     try:
-        # 설정 도구 실행 (실제 명령어는 환경에 맞게 수정 필요)
-        subprocess.run(["python3", os.path.join(SCRIPT_DIR, "bluetooth_setup.py"), "--recv"])
+        # 블루투스 설정 모듈 임포트
+        from blehub.daemon.bluetooth_setup import setup_recv_bluetooth_adapter, setup_recv_device
+        
+        # 어댑터 설정
+        if not setup_recv_bluetooth_adapter():
+            return False
+        
+        # 사용자에게 디바이스도 설정할지 물어봄
+        print("\n수신 디바이스도 추가하시겠습니까? (y/n): ", end="")
+        choice = input().strip().lower()
+        
+        if choice == 'y' or choice == 'yes':
+            setup_recv_device()
+        
         return True
     except Exception as e:
         logger.error(f"수신용 블루투스 설정 중 오류 발생: {e}")
@@ -250,8 +262,20 @@ def setup_send_bluetooth():
     """송신용 블루투스를 설정합니다"""
     logger.info("송신용 블루투스 설정을 시작합니다...")
     try:
-        # 설정 도구 실행 (실제 명령어는 환경에 맞게 수정 필요)
-        subprocess.run(["python3", os.path.join(SCRIPT_DIR, "bluetooth_setup.py"), "--send"])
+        # 블루투스 설정 모듈 임포트
+        from blehub.daemon.bluetooth_setup import setup_send_bluetooth_adapter, setup_target_device
+        
+        # 어댑터 설정
+        if not setup_send_bluetooth_adapter():
+            return False
+        
+        # 사용자에게 디바이스도 설정할지 물어봄
+        print("\n송신 디바이스도 설정하시겠습니까? (y/n): ", end="")
+        choice = input().strip().lower()
+        
+        if choice == 'y' or choice == 'yes':
+            setup_target_device()
+        
         return True
     except Exception as e:
         logger.error(f"송신용 블루투스 설정 중 오류 발생: {e}")

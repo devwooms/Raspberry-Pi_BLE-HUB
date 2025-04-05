@@ -139,6 +139,62 @@ def show_target_device_menu():
         logger.error(f"송신 디바이스 메뉴 표시 중 오류 발생: {e}")
         return False
 
+def show_bluetooth_modules_menu():
+    """블루투스 모듈 관리 메뉴를 표시합니다"""
+    try:
+        # 블루투스 모듈 기능 임포트
+        from blehub.utils.bluetooth import list_bluetooth_modules, select_bluetooth_module
+        
+        while True:
+            # 화면 지우기
+            os.system('cls' if os.name == 'nt' else 'clear')
+            
+            # 메뉴 제목
+            print("\n" + "=" * 60)
+            print("블루투스 모듈 관리".center(60))
+            print("=" * 60)
+            
+            print("1. 시스템 블루투스 모듈 목록 표시")
+            print("2. 블루투스 모듈 선택")
+            print("0. 이전 메뉴로 돌아가기")
+            print("-" * 60)
+            
+            choice = input("메뉴를 선택하세요 (0-2): ")
+            
+            if choice == '1':
+                # 모듈 목록 표시
+                modules = list_bluetooth_modules()
+                if not modules:
+                    print("시스템에서 블루투스 모듈을 찾을 수 없습니다.")
+            
+            elif choice == '2':
+                # 모듈 선택
+                module = select_bluetooth_module()
+                if module:
+                    print("\n선택된 블루투스 모듈:")
+                    print(f"타입: {module['type'].upper()}")
+                    print(f"ID: {module['id']}")
+                    print(f"설명: {module['description']}")
+                    if module.get('interface'):
+                        print(f"인터페이스: {module['interface']}")
+                    if module.get('mac'):
+                        print(f"MAC 주소: {module['mac']}")
+            
+            elif choice == '0':
+                # 이전 메뉴로 돌아가기
+                break
+            
+            else:
+                print("잘못된 선택입니다. 다시 시도하세요.")
+            
+            input("\n계속하려면 Enter 키를 누르세요...")
+    
+    except Exception as e:
+        logger.error(f"블루투스 모듈 메뉴 표시 중 오류 발생: {e}")
+        return False
+    
+    return True
+
 def show_terminal_menu():
     """터미널 기반 메뉴를 표시합니다"""
     try:
@@ -206,11 +262,12 @@ def show_terminal_menu():
             print("7. 송신용 블루투스 설정")
             print("8. 수신 디바이스 관리")
             print("9. 송신 디바이스 설정")
+            print("10. 블루투스 모듈 관리")
             print("0. 종료")
             print("-" * 50)
             
             # 사용자 입력 받기
-            choice = input("메뉴를 선택하세요 (0-9): ")
+            choice = input("메뉴를 선택하세요 (0-10): ")
             
             # 입력 처리
             if choice == '1':
@@ -286,14 +343,41 @@ def show_terminal_menu():
             
             elif choice == '8':
                 # 수신 디바이스 관리
-                show_recv_devices_menu()
+                print("1. 수신 디바이스 목록")
+                print("2. 블루투스 검색 후 수신 디바이스 추가")
+                print("0. 이전 메뉴로 돌아가기")
+                sub_choice = input("\n메뉴를 선택하세요 (0-2): ")
+                
+                if sub_choice == '1':
+                    show_recv_devices_menu()
+                elif sub_choice == '2':
+                    # 블루투스 설정 모듈 임포트
+                    from blehub.daemon.bluetooth_setup import setup_recv_device
+                    setup_recv_device()
                 # 화면 지우기
                 os.system('cls' if os.name == 'nt' else 'clear')
                 continue  # 메뉴 갱신을 위해 루프 처음으로 돌아감
             
             elif choice == '9':
                 # 송신 디바이스 설정
-                show_target_device_menu()
+                print("1. 기존 디바이스 정보 입력")
+                print("2. 블루투스 검색 후 디바이스 선택")
+                print("0. 이전 메뉴로 돌아가기")
+                sub_choice = input("\n메뉴를 선택하세요 (0-2): ")
+                
+                if sub_choice == '1':
+                    show_target_device_menu()
+                elif sub_choice == '2':
+                    # 블루투스 설정 모듈 임포트
+                    from blehub.daemon.bluetooth_setup import setup_target_device
+                    setup_target_device()
+                # 화면 지우기
+                os.system('cls' if os.name == 'nt' else 'clear')
+                continue  # 메뉴 갱신을 위해 루프 처음으로 돌아감
+            
+            elif choice == '10':
+                # 블루투스 모듈 관리
+                show_bluetooth_modules_menu()
                 # 화면 지우기
                 os.system('cls' if os.name == 'nt' else 'clear')
                 continue  # 메뉴 갱신을 위해 루프 처음으로 돌아감
