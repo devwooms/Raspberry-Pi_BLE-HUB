@@ -314,4 +314,50 @@ class BluetoothScanner:
             return ""
         except Exception as e:
             print(f"명령 실행 오류: {e}")
-            return "" 
+            return ""
+    
+    def get_discovered_devices(self, interface='hci0'):
+        """현재 발견된 블루투스 장치 목록을 가져옵니다.
+        
+        Args:
+            interface (str): 블루투스 인터페이스 이름
+            
+        Returns:
+            list: 발견된 장치 목록
+        """
+        try:
+            # bluetoothctl devices 명령으로 기존 발견된 장치 가져오기
+            output = self._execute_command(['bluetoothctl', 'devices'])
+            
+            devices = []
+            # 결과 파싱
+            for line in output.splitlines():
+                # 'Device XX:XX:XX:XX:XX:XX DeviceName'
+                match = re.search(r'Device ([0-9A-F:]{17}) (.+)', line, re.IGNORECASE)
+                if match:
+                    mac = match.group(1)
+                    name = match.group(2)
+                    
+                    device_info = {
+                        'name': name,
+                        'mac': mac,
+                        'type': self._guess_device_type(name),
+                        'rssi': None
+                    }
+                    
+                    # RSSI 값을 가져오기 위한 시도
+                    try:
+                        rssi_output = self._execute_command(['bluetoothctl', 'info', mac])
+                        rssi_match = re.search(r'RSSI: (-\d+)', rssi_output)
+                        if rssi_match:
+                            device_info['rssi'] = rssi_match.group(1)
+                    except:
+                        pass
+                        
+                    devices.append(device_info)
+            
+            return devices
+            
+        except Exception as e:
+            print(f"장치 목록 가져오기 중 오류: {e}")
+            return [] 

@@ -90,7 +90,10 @@ class DeviceModel:
         """송신 디바이스 설정
         
         Args:
-            name (str): 디바이스 이름
-            mac_address (str): 디바이스 MAC 주소
+            name (str): 디바이스 이름 또는 None (삭제 시)
+            mac_address (str): 디바이스 MAC 주소 또는 None (삭제 시)
         """
-        self._transmitting_device = {"name": name, "mac": mac_address} 
+        if name is None or mac_address is None:
+            self._transmitting_device = None
+        else:
+            self._transmitting_device = {"name": name, "mac": mac_address} 

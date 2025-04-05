@@ -10,7 +10,9 @@ from ui.models.device_model import DeviceModel
 from core.daemon.daemon_controller import DaemonController
 from core.bluetooth.scanner import BluetoothScanner
 from core.bluetooth.module_manager import BluetoothModuleManager
+from core.bluetooth.device_manager import BluetoothDeviceManager
 from ui.controllers.module_selector import ModuleSelector
+from ui.controllers.device_controller import DeviceController
 
 class TerminalMenu:
     """터미널 메뉴 클래스"""
@@ -26,6 +28,10 @@ class TerminalMenu:
         # 모듈화된 컴포넌트 초기화
         self.module_manager = BluetoothModuleManager(self.bluetooth_scanner, self.device_model)
         self.module_selector = ModuleSelector(self.module_manager, self.menu_view)
+        
+        # 블루투스 디바이스 관련 컴포넌트 초기화
+        self.device_manager = BluetoothDeviceManager(self.bluetooth_scanner)
+        self.device_controller = DeviceController(self.device_manager, self.device_model, self.menu_view)
         
         # 프로그램 시작 시 설정 파일에서 블루투스 설정 로드
         self.load_config()
@@ -139,39 +145,53 @@ class TerminalMenu:
             self.menu_view.clear_screen()
             self.menu_view.show_header("블루투스 관리")
             
-            # 메뉴 옵션 표시 - 그룹으로 나누고 헤더 추가
-            print("\n[ 블루투스 모듈 ]")
-            print("1. 블루투스 모듈 목록 표시")
-            
-            print("\n[ 수신 블루투스 설정 ]")
-            print("2. 수신 블루투스 모듈 선택")
-            print("3. 수신 블루투스 디바이스 추가")
-            print("4. 수신 블루투스 디바이스 삭제")
-            
-            print("\n[ 송신 블루투스 설정 ]")
-            print("5. 송신 블루투스 모듈 선택")
-            print("6. 송신 블루투스 디바이스 선택")
-            
-            print("\n0. 이전 메뉴로 돌아가기")
+            # 메뉴 옵션 표시
+            options = {
+                "1": "수신용 블루투스 모듈 선택",
+                "2": "송신용 블루투스 모듈 선택",
+                "3": "수신 블루투스 디바이스 추가",
+                "4": "수신 블루투스 디바이스 삭제",
+                "5": "수신 블루투스 디바이스 목록",
+                "6": "송신 블루투스 디바이스 선택",
+                "7": "송신 블루투스 디바이스 삭제",
+                "0": "이전 메뉴로 돌아가기"
+            }
+            self.menu_view.show_menu_options(options)
             
             choice = input("\n선택: ")
             
             if choice == "1":
-                self.show_bluetooth_modules()
-            elif choice == "2":
                 self.module_selector.select_source_module()
-            elif choice == "5":
+            elif choice == "2":
                 self.module_selector.select_target_module()
-            elif choice in ["3", "4", "6"]:
-                self.menu_view.show_message("기능이 준비 중입니다.")
-                self.menu_view.wait_for_input()
+            elif choice == "3":
+                self.device_controller.add_receiving_device()
+            elif choice == "4":
+                self.device_controller.remove_receiving_device()
+            elif choice == "5":
+                self.show_receiving_devices()
+            elif choice == "6":
+                self.device_controller.select_transmitting_device()
+            elif choice == "7":
+                self.device_controller.remove_transmitting_device()
             elif choice == "0":
                 break
             else:
                 self.menu_view.show_error("잘못된 선택입니다. 다시 시도하세요.")
                 self.menu_view.wait_for_input()
-    
-    def show_bluetooth_modules(self):
-        """블루투스 모듈 목록 표시"""
-        interfaces = self.module_selector.display_module_list()
+                
+    def show_receiving_devices(self):
+        """수신 블루투스 디바이스 목록 표시"""
+        self.menu_view.clear_screen()
+        self.menu_view.show_header("수신 블루투스 디바이스 목록")
+        
+        receiving_devices = self.device_model.get_receiving_devices()
+        
+        if not receiving_devices:
+            self.menu_view.show_message("\n등록된 수신 디바이스가 없습니다.")
+        else:
+            self.menu_view.show_message("\n== 등록된 수신 디바이스 ==")
+            for i, device in enumerate(receiving_devices):
+                self.menu_view.show_message(f"{i+1}. {device['name']} - {device['mac']}")
+        
         self.menu_view.wait_for_input() 
