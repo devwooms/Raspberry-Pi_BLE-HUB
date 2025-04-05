@@ -9,20 +9,17 @@ class DeviceModel:
     
     def __init__(self):
         """디바이스 모델 초기화"""
-        # 샘플 데이터 (추후 실제 데이터로 교체 예정)
-        self._source_module = "00:11:22:33:44:55"
-        self._target_module = "AA:BB:CC:DD:EE:FF"
-        self._receiving_devices = [
-            {"name": "디바이스1", "mac": "12:34:56:78:90:AB"},
-            {"name": "디바이스2", "mac": "CD:EF:12:34:56:78"}
-        ]
-        self._transmitting_device = {"name": "송신기", "mac": "98:76:54:32:10:FF"}
+        # 기본 데이터 (비어있음)
+        self._source_module = None
+        self._target_module = None
+        self._receiving_devices = []
+        self._transmitting_device = None
     
     def get_source_module(self):
         """소스 블루투스 모듈 정보 반환
         
         Returns:
-            str: 소스 블루투스 모듈 MAC 주소
+            str: 소스 블루투스 모듈 MAC 주소 또는 None (설정되지 않은 경우)
         """
         return self._source_module
     
@@ -38,7 +35,7 @@ class DeviceModel:
         """타겟 블루투스 모듈 정보 반환
         
         Returns:
-            str: 타겟 블루투스 모듈 MAC 주소
+            str: 타겟 블루투스 모듈 MAC 주소 또는 None (설정되지 않은 경우)
         """
         return self._target_module
     
@@ -85,7 +82,7 @@ class DeviceModel:
         """송신 디바이스 정보 반환
         
         Returns:
-            dict: 송신 디바이스 정보 (이름, MAC 주소)
+            dict: 송신 디바이스 정보 (이름, MAC 주소) 또는 None (설정되지 않은 경우)
         """
         return self._transmitting_device
     

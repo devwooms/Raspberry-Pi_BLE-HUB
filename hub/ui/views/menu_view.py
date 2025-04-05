@@ -29,15 +29,21 @@ class MenuView:
             transmitting_device (dict): 송신 디바이스 정보
         """
         print(f"\n데몬 상태 : {daemon_status}")
-        print(f"수신용 블루투스 모듈 : {source_module}")
-        print(f"송신용 블루투스 모듈 : {target_module}")
+        print(f"수신용 블루투스 모듈 : {source_module if source_module else '없음'}")
+        print(f"송신용 블루투스 모듈 : {target_module if target_module else '없음'}")
         
         print("\n수신 블루투스 디바이스 :")
-        for i, device in enumerate(receiving_devices, 1):
-            print(f"{i}. {device['name']} - {device['mac']}")
+        if receiving_devices:
+            for i, device in enumerate(receiving_devices, 1):
+                print(f"{i}. {device['name']} - {device['mac']}")
+        else:
+            print("등록된 디바이스 없음")
         
         print("\n송신 블루투스 디바이스 :")
-        print(f"{transmitting_device['name']} - {transmitting_device['mac']}")
+        if transmitting_device:
+            print(f"{transmitting_device['name']} - {transmitting_device['mac']}")
+        else:
+            print("설정된 디바이스 없음")
     
     def show_menu_options(self, options):
         """메뉴 옵션 표시

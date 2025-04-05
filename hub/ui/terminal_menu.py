@@ -108,17 +108,20 @@ class TerminalMenu:
             self._clear_screen()
             self.menu_view.show_header("블루투스 관리")
             
-            # 메뉴 옵션 표시
-            options = {
-                "1": "블루투스 모듈 목록 표시",
-                "2": "소스 블루투스 인터페이스 선택",
-                "3": "타겟 블루투스 인터페이스 선택",
-                "4": "수신 블루투스 디바이스 추가",
-                "5": "수신 블루투스 디바이스 삭제",
-                "6": "송신 블루투스 디바이스 선택",
-                "0": "이전 메뉴로 돌아가기"
-            }
-            self.menu_view.show_menu_options(options)
+            # 메뉴 옵션 표시 - 그룹으로 나누고 헤더 추가
+            print("\n[ 블루투스 모듈 ]")
+            print("1. 블루투스 모듈 목록 표시")
+            
+            print("\n[ 수신 블루투스 설정 ]")
+            print("2. 수신 블루투스 모듈 선택")
+            print("3. 수신 블루투스 디바이스 추가")
+            print("4. 수신 블루투스 디바이스 삭제")
+            
+            print("\n[ 송신 블루투스 설정 ]")
+            print("5. 송신 블루투스 모듈 선택")
+            print("6. 송신 블루투스 디바이스 선택")
+            
+            print("\n0. 이전 메뉴로 돌아가기")
             
             choice = input("\n선택: ")
             
@@ -145,15 +148,14 @@ class TerminalMenu:
             self.menu_view.show_message("\n블루투스 모듈을 찾을 수 없습니다.")
         else:
             print("\n발견된 블루투스 모듈:")
-            print("\n{:<5} {:<10} {:<20} {:<20}".format("번호", "인터페이스", "MAC 주소", "설명"))
-            print("-" * 60)
+            print("\n{:<5} {:<10} {:<20}".format("번호", "인터페이스", "MAC 주소"))
+            print("-" * 40)
             
             for idx, interface in enumerate(interfaces, 1):
-                print("{:<5} {:<10} {:<20} {:<20}".format(
+                print("{:<5} {:<10} {:<20}".format(
                     idx, 
                     interface['name'], 
-                    interface['mac'], 
-                    interface['type']
+                    interface['mac']
                 ))
                 
             # 현재 설정된 모듈 표시
@@ -161,8 +163,8 @@ class TerminalMenu:
             target_module = self.device_model.get_target_module()
             
             print("\n현재 선택된 모듈:")
-            print(f"수신용: {source_module}")
-            print(f"송신용: {target_module}")
+            print(f"수신용: {source_module if source_module else '없음'}")
+            print(f"송신용: {target_module if target_module else '없음'}")
             
         self.menu_view.wait_for_input()
     
