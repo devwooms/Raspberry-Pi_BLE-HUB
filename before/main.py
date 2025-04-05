@@ -9,28 +9,33 @@ from bluetooth_scan import scan_devices, connect_device
 from config_manager import save_config, load_config, config_exists
 from daemon_control import start_relay_daemon
 
-def main():
-    print("===== 블루투스 어댑터 목록을 가져옵니다. =====\n\n")
+def select_bluetooth_adapters():
+    """수신용 및 송신용 블루투스 어댑터를 선택합니다."""
+    print("===== 블루투스 어댑터 목록을 가져옵니다. =====\n")
     adapters = list_bluetooth_adapters()
 
     if not adapters:
         print("블루투스 어댑터가 발견되지 않았습니다. USB 동글을 연결하거나, 드라이버를 확인하세요.")
-        return
+        return None, None
+
+    # 발견된 어댑터가 하나뿐이면 경고 출력
+    if len(adapters) < 2:
+        print("경고: 블루투스 릴레이에는 최소 2개의 어댑터가 필요합니다.")
+        print("현재 발견된 어댑터는 1개뿐입니다. 추가 USB 블루투스 동글을 연결하세요.")
+        return None, None
 
     print("===== 발견된 블루투스 어댑터 =====")
     print("--------------------------------")
-    for i, addr, info in adapters:
-        print(f"{i}. {addr} - {info}")
-    print("--------------------------------\n\n")
+    for i, hci, addr, info in adapters:
+        print(f"{i}. {hci} - {addr} - {info}")
+    print("--------------------------------\n")
 
-
-    print("===== 수신용, 송신용 선택 =====\n")
     # 수신용, 송신용 선택
     while True:
         print("--------------------------------")
         recv_idx = input("수신용 블루투스로 지정할 번호를 입력하세요: ")
         send_idx = input("송신용 블루투스로 지정할 번호를 입력하세요: ")
-        print("--------------------------------\n\n")
+        print("--------------------------------\n")
         try:
             recv_idx = int(recv_idx)
             send_idx = int(send_idx)
@@ -54,6 +59,17 @@ def main():
     print(f" - 송신용: {send_adapter[1]} ({send_adapter[2]})")
     print("--------------------------------\n")
     
+    return recv_adapter, send_adapter
+
+def main():
+    # 어댑터 선택 로직
+    recv_adapter, send_adapter = select_bluetooth_adapters()
+    
+    # 적절한 어댑터가 선택되지 않은 경우 종료
+    if recv_adapter is None or send_adapter is None:
+        print("블루투스 어댑터 선택을 완료할 수 없습니다. 프로그램을 종료합니다.")
+        return
+    
     # 기기 스캔 및 선택 루프
     while True:
         # 수신용 어댑터로 기기 스캔
@@ -70,10 +86,12 @@ def main():
                 scan_time = max(5, min(60, scan_time))  # 5~60초 범위로 제한
                 
             print(f"\n{scan_time}초 동안 스캔을 시작합니다...\n")
-            devices = scan_devices(recv_adapter[1], timeout=scan_time)
+            # hci 이름으로 스캔 (use_hci=True)
+            devices = scan_devices(recv_adapter[1], timeout=scan_time, use_hci=True)
         except ValueError:
             print("유효한 숫자가 아닙니다. 기본값(10초)으로 스캔합니다.")
-            devices = scan_devices(recv_adapter[1], timeout=10)
+            # hci 이름으로 스캔 (use_hci=True)
+            devices = scan_devices(recv_adapter[1], timeout=10, use_hci=True)
         except KeyboardInterrupt:
             print("\n\n스캔이 사용자에 의해 중단되었습니다.")
             return
@@ -112,15 +130,15 @@ def main():
                     selected_device = devices[device_idx]
                     print(f"\n{selected_device[2]}({selected_device[1]})에 연결을 시도합니다...")
                     
-                    # 연결 시도
+                    # 연결 시도 (use_hci=True)
                     try:
-                        connect_success = connect_device(recv_adapter[1], selected_device[1])
+                        connect_success = connect_device(recv_adapter[1], selected_device[1], use_hci=True)
                         
                         if connect_success:
                             print("\n===== 연결 성공 =====")
                             print(f"수신용 어댑터({recv_adapter[1]})와 {selected_device[2]}({selected_device[1]})가 연결되었습니다.")
                             
-                            # 설정 저장
+                            # 설정 저장 - MAC 주소 대신 hci 이름을 저장
                             try:
                                 save_config(recv_adapter[1], send_adapter[1], selected_device[1])
                                 print("\n설정이 저장되었습니다.")

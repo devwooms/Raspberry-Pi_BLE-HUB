@@ -9,7 +9,7 @@ from pathlib import Path
 
 # 자체 모듈 import
 from config_manager import load_config
-from bluetooth_scan import check_device_connected, connect_device, disconnect_device, disconnect_all_devices
+from bluetooth_scan import check_device_connected, connect_device, disconnect_device, disconnect_all_devices, get_connected_devices
 
 # 로깅 설정
 logging.basicConfig(
@@ -75,9 +75,9 @@ class BLERelay:
             self._setup_adapter(self.send_adapter, is_receiver=False)
             
             # 타겟 기기가 연결되어 있는지 확인
-            if not check_device_connected(self.recv_adapter, self.target_device):
+            if not check_device_connected(self.recv_adapter, self.target_device, use_hci=True):
                 logger.info(f"타겟 기기({self.target_device})가 연결되어 있지 않아 연결 시도 중...")
-                if not connect_device(self.recv_adapter, self.target_device):
+                if not connect_device(self.recv_adapter, self.target_device, use_hci=True):
                     logger.error("타겟 기기 연결 실패")
                     return False
             
@@ -119,9 +119,9 @@ class BLERelay:
             # 테스트용 무한 루프
             while self.running:
                 # 주기적으로 연결 상태 확인
-                if not check_device_connected(self.recv_adapter, self.target_device):
+                if not check_device_connected(self.recv_adapter, self.target_device, use_hci=True):
                     logger.warning("타겟 기기 연결이 끊어졌습니다. 재연결 시도 중...")
-                    connect_device(self.recv_adapter, self.target_device)
+                    connect_device(self.recv_adapter, self.target_device, use_hci=True)
                 
                 # 실제 구현에서는 여기서 HID 이벤트를 수신하고 전달하는 로직이 필요
                 # 예: evdev나 bluez를 사용한 이벤트 처리
@@ -152,21 +152,21 @@ class BLERelay:
                 # 특정 타겟 기기 연결 해제
                 if self.target_device:
                     logger.info(f"타겟 기기({self.target_device}) 연결 해제 중...")
-                    if disconnect_device(self.recv_adapter, self.target_device):
+                    if disconnect_device(self.recv_adapter, self.target_device, use_hci=True):
                         logger.info(f"타겟 기기({self.target_device}) 연결 해제 성공")
                     else:
                         logger.warning(f"타겟 기기({self.target_device}) 연결 해제 실패")
                 
                 # 수신 어댑터에 연결된 모든 기기 연결 해제 (선택 사항)
                 logger.info(f"수신 어댑터({self.recv_adapter})에 연결된 모든 기기 연결 해제 중...")
-                if disconnect_all_devices(self.recv_adapter):
+                if disconnect_all_devices(self.recv_adapter, use_hci=True):
                     logger.info(f"수신 어댑터({self.recv_adapter}) 연결 해제 성공")
                 else:
                     logger.warning(f"일부 기기 연결 해제 실패")
                 
                 # 송신 어댑터에 연결된 모든 기기 연결 해제 (선택 사항)
                 logger.info(f"송신 어댑터({self.send_adapter})에 연결된 모든 기기 연결 해제 중...")
-                disconnect_all_devices(self.send_adapter)
+                disconnect_all_devices(self.send_adapter, use_hci=True)
             except Exception as e:
                 logger.error(f"연결 해제 중 오류: {e}")
         
