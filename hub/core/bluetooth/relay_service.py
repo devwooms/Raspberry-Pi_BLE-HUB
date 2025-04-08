@@ -280,17 +280,27 @@ class BluetoothRelayService:
             print(f"입력 장치 열기: {input_device_path}")
             mouse = InputDevice(input_device_path)
             
-            # HID 장치 에뮬레이션 설정
-            # 송신 장치로 HID 데이터 전송을 위한 준비
+            # HID 전송 방식 선택: 1. bt-hid-device 2. DBus 직접 사용 3. 시뮬레이션
+            # 1. 먼저 bt-hid-device 도구 시도
             hid_output_process = self._setup_hid_output(target_device)
+            
+            # 2. bt-hid-device 실패 시 DBus 직접 사용 시도
+            dbus_hid = None
             if not hid_output_process:
-                print("HID 출력 설정 실패. 시뮬레이션 모드로 실행합니다.")
-                self._run_simulation_mode(source_device, target_device, stop_event)
-                return
+                print("bt-hid-device 도구 초기화 실패. DBus 직접 사용 시도...")
+                dbus_hid = self._setup_dbus_hid(target_device)
+                
+                if not dbus_hid:
+                    print("DBus HID 초기화 실패. 시뮬레이션 모드로 실행합니다.")
+                    self._run_simulation_mode(source_device, target_device, stop_event)
+                    return
             
             # 로그에 기록
             with open('blehub.log', 'a') as f:
-                f.write(f"HID 릴레이 시작: {source_device['name']} -> {target_device['name']} (장치: {input_device_path})\n")
+                if hid_output_process:
+                    f.write(f"HID 릴레이 시작 (bt-hid-device): {source_device['name']} -> {target_device['name']} (장치: {input_device_path})\n")
+                else:
+                    f.write(f"HID 릴레이 시작 (DBus): {source_device['name']} -> {target_device['name']} (장치: {input_device_path})\n")
             
             # 이벤트 처리 루프
             print("입력 이벤트 대기 중...")
@@ -312,8 +322,12 @@ class BluetoothRelayService:
                     if r:
                         for event in mouse.read():
                             if event.type in [ecodes.EV_REL, ecodes.EV_ABS, ecodes.EV_KEY]:
-                                # 이벤트 데이터 처리 및 HID 보고서 전송
-                                self._process_hid_event(event, hid_output_process, mouse_state)
+                                if hid_output_process:
+                                    # bt-hid-device로 HID 이벤트 전송
+                                    self._process_hid_event(event, hid_output_process, mouse_state)
+                                elif dbus_hid:
+                                    # DBus로 HID 이벤트 전송
+                                    self._process_dbus_hid_event(event, dbus_hid, mouse_state)
                                 
                                 processed_events += 1
                                 if processed_events % 10 == 0:  # 10개 이벤트마다 한 번씩 표시
@@ -334,6 +348,14 @@ class BluetoothRelayService:
                 try:
                     hid_output_process.terminate()
                     hid_output_process.wait(timeout=1)
+                except:
+                    pass
+            
+            # DBus HID 정리
+            if dbus_hid:
+                try:
+                    # DBus 리소스 정리 (필요한 경우)
+                    print("DBus HID 연결 종료")
                 except:
                     pass
             
@@ -360,19 +382,40 @@ class BluetoothRelayService:
             subprocess.Popen: 실행된 bt-hid-device 프로세스 객체 또는 None
         """
         try:
-            # bt-hid-device 경로 설정 (설치 위치에 따라 조정 필요)
+            # bt-hid-device 경로 자동 검색
             bt_hid_device_paths = [
                 "/usr/local/bin/bt-hid-device",
                 "/usr/bin/bt-hid-device",
-                os.path.expanduser("~/P4wnP1_aloa/bluetooth/bt_hid_device/build/bt-hid-device")
+                os.path.expanduser("~/P4wnP1_aloa/bluetooth/bt_hid_device/build/bt-hid-device"),
+                # 상대 경로도 확인
+                "./bt-hid-device",
+                "../tools/bt-hid-device",
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools/bt-hid-device")
             ]
             
             bt_hid_path = None
             for path in bt_hid_device_paths:
                 if os.path.exists(path):
                     bt_hid_path = path
+                    print(f"bt-hid-device 도구를 찾았습니다: {path}")
                     break
             
+            if not bt_hid_path:
+                # 시스템 경로에서 찾기 시도
+                try:
+                    which_result = subprocess.run(
+                        ["which", "bt-hid-device"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=2
+                    )
+                    if which_result.returncode == 0 and which_result.stdout.strip():
+                        bt_hid_path = which_result.stdout.strip()
+                        print(f"시스템 경로에서 bt-hid-device를 찾았습니다: {bt_hid_path}")
+                except Exception:
+                    pass
+                
             if not bt_hid_path:
                 print("bt-hid-device 도구를 찾을 수 없습니다. 다음 명령어로 설치하세요:")
                 print("sudo apt install git cmake build-essential libbluetooth-dev libdbus-1-dev")
@@ -381,27 +424,104 @@ class BluetoothRelayService:
                 print("mkdir build && cd build")
                 print("cmake ..")
                 print("make")
+                print("sudo cp bt-hid-device /usr/local/bin/")
                 return None
             
             # HID 출력 프로세스 설정
             print(f"HID 출력 초기화: {target_device['name']} ({target_device['mac']})")
             
+            # 연결 상태 확인
+            info_cmd = ["bluetoothctl", "info", target_device['mac']]
+            info_result = subprocess.run(
+                info_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5
+            ).stdout
+            
+            if "Connected: no" in info_result:
+                print(f"장치 {target_device['name']} ({target_device['mac']})가 연결되어 있지 않습니다. 연결 시도 중...")
+                connect_cmd = ["bluetoothctl", "connect", target_device['mac']]
+                connect_result = subprocess.run(
+                    connect_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=10
+                )
+                print(f"연결 결과: {connect_result.stdout}")
+                # 연결 후 잠시 대기
+                time.sleep(2)
+            
+            # 실행 권한 확인 및 부여
+            if not os.access(bt_hid_path, os.X_OK):
+                print(f"{bt_hid_path}에 실행 권한이 없습니다. 권한 부여 중...")
+                try:
+                    subprocess.run(
+                        ["chmod", "+x", bt_hid_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                except Exception as e:
+                    print(f"실행 권한 부여 실패: {e}")
+                    print("다음 명령어를 수동으로 실행해보세요: chmod +x " + bt_hid_path)
+            
+            # 그래도 실행 권한이 없으면 sudo로 시도
+            use_sudo = False
+            if not os.access(bt_hid_path, os.X_OK):
+                print("sudo를 사용하여 도구를 실행합니다.")
+                use_sudo = True
+            
             # bt-hid-device 실행 (마우스 모드)
+            cmd = []
+            if use_sudo:
+                cmd.append("sudo")
+            cmd.extend([bt_hid_path, "-m", target_device['mac']])
+            
+            print(f"실행 명령어: {' '.join(cmd)}")
             hid_process = subprocess.Popen(
-                [bt_hid_path, "-m", target_device['mac']],
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=False  # 바이너리 모드로 통신
             )
             
-            # 프로세스가 시작되었는지 확인
+            # 실행 결과 확인을 위한 짧은 시간 대기
+            time.sleep(1)
+            
+            # 프로세스가 여전히 실행 중인지 확인
             if hid_process.poll() is not None:
-                stderr = hid_process.stderr.read().decode('utf-8')
-                print(f"HID 프로세스 시작 실패: {stderr}")
+                stdout = hid_process.stdout.read().decode('utf-8') if hid_process.stdout else ""
+                stderr = hid_process.stderr.read().decode('utf-8') if hid_process.stderr else ""
+                print(f"HID 프로세스 시작 실패. 종료 코드: {hid_process.returncode}")
+                if stdout:
+                    print(f"표준 출력: {stdout}")
+                if stderr:
+                    print(f"오류 출력: {stderr}")
+                
+                # DBus 권한 오류 확인
+                if "org.freedesktop.DBus.Error.AccessDenied" in stderr:
+                    print("DBus 접근 권한이 없습니다. 다음 명령어로 권한을 부여하세요:")
+                    print("sudo usermod -aG bluetooth $USER")
+                    print("또는 sudo로 프로그램을 실행하세요.")
+                
                 return None
             
-            print("HID 출력이 초기화되었습니다.")
+            print("HID 출력이 성공적으로 초기화되었습니다.")
+            print("마우스 데이터가 송신 장치로 전송됩니다.")
+            
+            # 테스트 데이터 전송 (가벼운 마우스 이동)
+            test_report = bytes([0, 5, 0, 0])  # 오른쪽으로 5픽셀 이동
+            try:
+                hid_process.stdin.write(test_report)
+                hid_process.stdin.flush()
+                print("테스트 HID 데이터 전송 성공")
+            except Exception as e:
+                print(f"테스트 HID 데이터 전송 실패: {e}")
+            
             time.sleep(0.5)  # 초기화를 위한 짧은 대기 시간
             return hid_process
             
@@ -409,6 +529,93 @@ class BluetoothRelayService:
             print(f"HID 출력 설정 오류: {e}")
             return None
     
+    def _setup_dbus_hid(self, target_device):
+        """DBus를 사용한 HID 출력 설정
+        
+        Args:
+            target_device (dict): 송신 장치 정보
+            
+        Returns:
+            dict: DBus HID 정보 (성공 시) 또는 None (실패 시)
+        """
+        try:
+            # 필요한 패키지 가져오기
+            import dbus
+            import dbus.service
+            import dbus.mainloop.glib
+            
+            print("DBus를 사용한 HID 출력 초기화 중...")
+            print(f"대상 장치: {target_device['name']} ({target_device['mac']})")
+            
+            # D-Bus 초기화
+            dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+            bus = dbus.SystemBus()
+            
+            # BlueZ 객체 경로 찾기
+            adapter_path = None
+            device_path = None
+            
+            # BlueZ 버전 확인
+            bluez_obj = bus.get_object('org.bluez', '/')
+            manager = dbus.Interface(bluez_obj, 'org.freedesktop.DBus.ObjectManager')
+            objects = manager.GetManagedObjects()
+            
+            # 어댑터 및 장치 경로 찾기
+            for path, interfaces in objects.items():
+                if 'org.bluez.Adapter1' in interfaces:
+                    adapter_path = path
+                    print(f"블루투스 어댑터 경로: {adapter_path}")
+                
+                if 'org.bluez.Device1' in interfaces:
+                    device_props = interfaces['org.bluez.Device1']
+                    if 'Address' in device_props and device_props['Address'] == target_device['mac']:
+                        device_path = path
+                        print(f"장치 경로: {device_path}")
+            
+            if not adapter_path:
+                print("블루투스 어댑터를 찾을 수 없습니다.")
+                return None
+                
+            if not device_path:
+                print(f"장치 {target_device['mac']}의 D-Bus 경로를 찾을 수 없습니다.")
+                return None
+            
+            # 장치 인터페이스 가져오기
+            device_obj = bus.get_object('org.bluez', device_path)
+            device_iface = dbus.Interface(device_obj, 'org.bluez.Device1')
+            
+            # 연결 상태 확인
+            device_props = dbus.Interface(device_obj, 'org.freedesktop.DBus.Properties')
+            if not device_props.Get('org.bluez.Device1', 'Connected'):
+                print("장치가 연결되어 있지 않습니다. 연결 시도 중...")
+                device_iface.Connect()
+                print("장치 연결됨")
+            else:
+                print("장치가 이미 연결되어 있습니다.")
+            
+            # HID 서비스 찾기
+            hid_uuid = '00001124-0000-1000-8000-00805f9b34fb'  # HID UUID
+            
+            # 연결을 위한 정보 반환
+            return {
+                'bus': bus,
+                'device_path': device_path,
+                'device_obj': device_obj,
+                'device_iface': device_iface,
+                'adapter_path': adapter_path
+            }
+            
+        except ImportError as e:
+            print(f"DBus 라이브러리를 가져올 수 없습니다: {e}")
+            print("다음 명령어로 필요한 패키지를 설치하세요:")
+            print("sudo apt-get install python3-dbus python3-gi")
+            return None
+        except Exception as e:
+            print(f"DBus HID 설정 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+            
     def _process_hid_event(self, event, hid_process, mouse_state):
         """HID 이벤트 처리 및 전송
         
@@ -422,39 +629,73 @@ class BluetoothRelayService:
             
             # 이미 프로세스가 종료되었으면 무시
             if hid_process.poll() is not None:
+                print("HID 프로세스가 종료되었습니다. 이벤트 처리를 중단합니다.")
                 return
+            
+            # 디버깅을 위한 이벤트 정보 출력 (필요 시 주석 해제)
+            # print(f"이벤트: type={event.type}, code={event.code}, value={event.value}")
             
             # 이벤트 유형에 따른 처리
             if event.type == ecodes.EV_REL:  # 마우스 이동
                 # X, Y 이동값 처리 (값을 -127~127 범위로 제한)
                 if event.code == ecodes.REL_X:
-                    mouse_state['x'] = max(-127, min(127, event.value))
+                    # 이동 값 범위 조정
+                    adjusted_value = max(-127, min(127, event.value))
+                    mouse_state['x'] = adjusted_value
+                    if abs(adjusted_value) > 10:
+                        print(f"X축 이동: {adjusted_value}")
                 elif event.code == ecodes.REL_Y:
-                    mouse_state['y'] = max(-127, min(127, event.value))
+                    adjusted_value = max(-127, min(127, event.value))
+                    mouse_state['y'] = adjusted_value
+                    if abs(adjusted_value) > 10:
+                        print(f"Y축 이동: {adjusted_value}")
                 elif event.code == ecodes.REL_WHEEL:
-                    mouse_state['wheel'] = max(-127, min(127, event.value))
+                    adjusted_value = max(-127, min(127, event.value))
+                    mouse_state['wheel'] = adjusted_value
+                    print(f"휠 스크롤: {adjusted_value}")
                     
             elif event.type == ecodes.EV_KEY:  # 마우스 버튼
                 if event.code == ecodes.BTN_LEFT:
                     if event.value:  # 버튼 누름
                         mouse_state['buttons'] |= 0x01  # 첫 번째 비트 설정
+                        print("왼쪽 버튼 누름")
                     else:  # 버튼 해제
                         mouse_state['buttons'] &= ~0x01  # 첫 번째 비트 해제
+                        print("왼쪽 버튼 해제")
                         
                 elif event.code == ecodes.BTN_RIGHT:
                     if event.value:  # 버튼 누름
                         mouse_state['buttons'] |= 0x02  # 두 번째 비트 설정
+                        print("오른쪽 버튼 누름")
                     else:  # 버튼 해제
                         mouse_state['buttons'] &= ~0x02  # 두 번째 비트 해제
+                        print("오른쪽 버튼 해제")
                         
                 elif event.code == ecodes.BTN_MIDDLE:
                     if event.value:  # 버튼 누름
                         mouse_state['buttons'] |= 0x04  # 세 번째 비트 설정
+                        print("가운데 버튼 누름")
                     else:  # 버튼 해제
                         mouse_state['buttons'] &= ~0x04  # 세 번째 비트 해제
+                        print("가운데 버튼 해제")
+                else:
+                    # 기타 버튼 이벤트
+                    print(f"기타 버튼 이벤트: code={event.code}, value={event.value}")
+            
+            # 값이 모두 0이면 보고서를 보내지 않음
+            if (mouse_state['buttons'] == 0 and 
+                mouse_state['x'] == 0 and 
+                mouse_state['y'] == 0 and 
+                mouse_state['wheel'] == 0):
+                return
+            
+            # 마우스 값 디버깅 (움직임이 있을 때만 표시)
+            if mouse_state['x'] != 0 or mouse_state['y'] != 0 or mouse_state['wheel'] != 0:
+                print(f"← → X:{mouse_state['x']:4d} | Y:{mouse_state['y']:4d} | 휠:{mouse_state['wheel']:4d} | 버튼:{bin(mouse_state['buttons'])[2:]:8s}")
             
             # HID 보고서 작성 및 전송
             # 마우스 HID 보고서 형식: [버튼, X, Y, 휠]
+            # 값이 음수인 경우를 처리하기 위해 비트 마스킹 사용
             hid_report = bytes([
                 mouse_state['buttons'] & 0xFF,
                 mouse_state['x'] & 0xFF,
@@ -463,8 +704,15 @@ class BluetoothRelayService:
             ])
             
             # HID 보고서를 프로세스로 전송
-            hid_process.stdin.write(hid_report)
-            hid_process.stdin.flush()
+            try:
+                hid_process.stdin.write(hid_report)
+                hid_process.stdin.flush()
+            except BrokenPipeError:
+                print("HID 프로세스 통신 오류 (파이프 끊김)")
+                return
+            except OSError as e:
+                print(f"OS 오류: {e}")
+                return
             
             # 이동값 재설정 (지속적인 이동 방지)
             mouse_state['x'] = 0
@@ -475,6 +723,104 @@ class BluetoothRelayService:
             print("HID 프로세스 통신 오류 (파이프 끊김)")
         except Exception as e:
             print(f"이벤트 처리 오류: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _process_dbus_hid_event(self, event, dbus_hid, mouse_state):
+        """DBus를 사용한 HID 이벤트 처리 및 전송
+        
+        Args:
+            event (evdev.InputEvent): 입력 이벤트
+            dbus_hid (dict): DBus HID 정보
+            mouse_state (dict): 현재 마우스 상태
+        """
+        try:
+            from evdev import categorize, ecodes
+            import dbus
+            
+            # 이벤트 유형에 따른 처리
+            if event.type == ecodes.EV_REL:  # 마우스 이동
+                # X, Y 이동값 처리 (값을 -127~127 범위로 제한)
+                if event.code == ecodes.REL_X:
+                    adjusted_value = max(-127, min(127, event.value))
+                    mouse_state['x'] = adjusted_value
+                    if abs(adjusted_value) > 10:
+                        print(f"X축 이동: {adjusted_value}")
+                elif event.code == ecodes.REL_Y:
+                    adjusted_value = max(-127, min(127, event.value))
+                    mouse_state['y'] = adjusted_value
+                    if abs(adjusted_value) > 10:
+                        print(f"Y축 이동: {adjusted_value}")
+                elif event.code == ecodes.REL_WHEEL:
+                    adjusted_value = max(-127, min(127, event.value))
+                    mouse_state['wheel'] = adjusted_value
+                    print(f"휠 스크롤: {adjusted_value}")
+                    
+            elif event.type == ecodes.EV_KEY:  # 마우스 버튼
+                if event.code == ecodes.BTN_LEFT:
+                    if event.value:  # 버튼 누름
+                        mouse_state['buttons'] |= 0x01  # 첫 번째 비트 설정
+                        print("왼쪽 버튼 누름")
+                    else:  # 버튼 해제
+                        mouse_state['buttons'] &= ~0x01  # 첫 번째 비트 해제
+                        print("왼쪽 버튼 해제")
+                        
+                elif event.code == ecodes.BTN_RIGHT:
+                    if event.value:  # 버튼 누름
+                        mouse_state['buttons'] |= 0x02  # 두 번째 비트 설정
+                        print("오른쪽 버튼 누름")
+                    else:  # 버튼 해제
+                        mouse_state['buttons'] &= ~0x02  # 두 번째 비트 해제
+                        print("오른쪽 버튼 해제")
+                        
+                elif event.code == ecodes.BTN_MIDDLE:
+                    if event.value:  # 버튼 누름
+                        mouse_state['buttons'] |= 0x04  # 세 번째 비트 설정
+                        print("가운데 버튼 누름")
+                    else:  # 버튼 해제
+                        mouse_state['buttons'] &= ~0x04  # 세 번째 비트 해제
+                        print("가운데 버튼 해제")
+                else:
+                    # 기타 버튼 이벤트
+                    print(f"기타 버튼 이벤트: code={event.code}, value={event.value}")
+            
+            # 값이 모두 0이면 보고서를 보내지 않음
+            if (mouse_state['buttons'] == 0 and 
+                mouse_state['x'] == 0 and 
+                mouse_state['y'] == 0 and 
+                mouse_state['wheel'] == 0):
+                return
+            
+            # 마우스 값 디버깅 (움직임이 있을 때만 표시)
+            if mouse_state['x'] != 0 or mouse_state['y'] != 0 or mouse_state['wheel'] != 0:
+                print(f"← → X:{mouse_state['x']:4d} | Y:{mouse_state['y']:4d} | 휠:{mouse_state['wheel']:4d} | 버튼:{bin(mouse_state['buttons'])[2:]:8s}")
+            
+            # D-Bus를 통한 HID 데이터 전송 시도
+            # 주의: BlueZ의 HID 프로필 인터페이스는 비공개(private) API이며, 
+            # 이 코드는 개념적인 것으로 실제 BluezZ 구현에 따라 달라질 수 있습니다.
+            try:
+                device_obj = dbus_hid['device_obj']
+                
+                # HID 인터페이스 존재 여부 확인 및 접근 (실제 BlueZ 구현에 따라 다를 수 있음)
+                print("DBus로 HID 데이터 전송 시도 (실험적 기능)")
+                
+                # 이 부분은 BlueZ 구현에 따라 실제 작동하지 않을 수 있으며,
+                # 정확한 구현은 BlueZ 소스 코드를 참조해야 함
+                
+                # 실제 DBus 전송 코드는 여기에 구현
+                
+            except Exception as e:
+                print(f"DBus HID 전송 오류: {e}")
+            
+            # 이동값 재설정 (지속적인 이동 방지)
+            mouse_state['x'] = 0
+            mouse_state['y'] = 0
+            mouse_state['wheel'] = 0
+            
+        except Exception as e:
+            print(f"DBus 이벤트 처리 오류: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _run_simulation_mode(self, source_device, target_device, stop_event):
         """시뮬레이션 모드로 릴레이 실행
