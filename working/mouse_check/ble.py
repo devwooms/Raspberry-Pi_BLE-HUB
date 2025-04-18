@@ -492,7 +492,7 @@ class InputReportCharacteristic(Characteristic):
             return False # 타이머 중지
 
         # 현재 방향에 따라 이동량 계산
-        move_delta = 1000 * self.mouse_move_direction
+        move_delta = 10 * self.mouse_move_direction
         print(f"마우스 이동 시뮬레이션 ({move_delta}, {move_delta})")
         # 리포트 형식: 버튼(1), dX(2), dY(2), 휠(1)
         report = [
