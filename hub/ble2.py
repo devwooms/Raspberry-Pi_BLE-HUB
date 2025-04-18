@@ -393,7 +393,7 @@ class HIDInformationCharacteristic(Characteristic):
         Characteristic.__init__(
             self, bus, index,
             HID_INFO_UUID,
-            ['read'],
+            ['read'], # 일반 읽기 권한으로 변경
             service)
         # bcdHID (예: 1.11), bCountryCode (0 = 지역화되지 않음), Flags (일반 연결)
         # 버전 1.11, 지역화 안됨, 일반 연결 플래그
@@ -411,7 +411,7 @@ class ReportMapCharacteristic(Characteristic):
         Characteristic.__init__(
             self, bus, index,
             REPORT_MAP_UUID,
-            ['read'],
+            ['read'], # 일반 읽기 권한으로 변경
             service)
         # HID_REPORT_MAP 리스트를 바이트 배열로 변환하여 값 설정
         self._value = [dbus.Byte(b) for b in HID_REPORT_MAP]
@@ -425,37 +425,38 @@ class InputReportCharacteristic(Characteristic):
     입력 리포트 특성. 마우스 데이터를 호스트로 보내는 데 사용됩니다.
     알림(Notification)을 위해 CCCD(Client Characteristic Configuration Descriptor)가 필요합니다.
     """
+    # 상수 정의
+    STEP_INTERVAL_MS = 500     # 스텝 간 간격 (0.5초)
+    SIDE_DURATION_MS = 10000   # 한 변을 그리는 시간 (10초)
+    MOVE_PER_STEP = 5         # 한 스텝당 이동 거리 (픽셀 단위)
+    # 계산된 상수
+    STEPS_PER_SIDE = SIDE_DURATION_MS // STEP_INTERVAL_MS # 한 변당 스텝 수 (10000 / 500 = 20)
+
     def __init__(self, bus, index, service, report_id):
         self.report_id = report_id
         self.simulation_timer_id = None # 마우스 시뮬레이션 타이머 ID
-        self.keep_alive_timer_id = None # keep-alive 타이머 ID
-        self.mouse_move_direction = 1 # 마우스 이동 방향: 1 (오른쪽 아래), -1 (왼쪽 위)
+        self.square_step = 0 # 사각형 그리기 단계 (0: 오른쪽, 1: 아래, 2: 왼쪽, 3: 위)
+        self.current_step_in_side = 0 # 현재 변에서 진행된 스텝 수
         Characteristic.__init__(
             self, bus, index,
             REPORT_UUID,
             # 보안 연결이 필요한 읽기/알림 권한 추가
             ['secure-read', 'secure-notify'],
             service)
-        # CCCD (Client Characteristic Configuration Descriptor) 추가
-        # CCCD는 알림(Notify) 기능을 클라이언트가 제어할 수 있게 함
-        self.add_descriptor(ClientCharCfgDescriptor(bus, 0, self)) # 디스크립터 인덱스 0
-
-        # 마우스: 버튼(1), X(2), Y(2), 휠(1) = 6 바이트
+        # CCCD 추가
+        self.add_descriptor(ClientCharCfgDescriptor(bus, 0, self))
+        # 초기 값 설정
         self._value = [dbus.Byte(report_id)] + [dbus.Byte(0x00)] * 6
 
     def send_report(self, report_data):
         """특성 값을 업데이트하고 활성화된 경우 알림을 보냅니다."""
-        # 데이터 앞에 리포트 ID 추가
         full_report = [dbus.Byte(self.report_id)] + [dbus.Byte(b) for b in report_data]
-        print(f"리포트 ID {self.report_id} 전송 중: {full_report}")
-        # update_value 메서드가 PropertiesChanged 시그널 처리
+        print(f"리포트 ID {self.report_id} 전송 시도: {full_report}")
         self.update_value(full_report)
 
     def ReadValue(self, options):
-        # 사양에 따르면 입력 리포트 읽기는 선택 사항이지만, 필요한 경우 마지막 전송 값 반환
         return self._value
 
-    # 리포트 ID를 출력하기 위해 Start/Stop Notify 재정의
     def StartNotify(self):
         if self.notifying:
             print(f'입력 리포트 ID {self.report_id}은(는) 이미 알림 중입니다.')
@@ -463,11 +464,11 @@ class InputReportCharacteristic(Characteristic):
         print(f'입력 리포트 ID {self.report_id}에 대한 알림 시작')
         self.notifying = True
 
-        # 마우스 리포트 특성에 대해서만 마우스 시뮬레이션 시작
         if self.report_id == 1 and self.simulation_timer_id is None:
-            print("마우스 이동 시뮬레이션 시작 중...")
-            # 3초(3000ms)마다 _simulate_mouse_movement 호출하는 타이머 시작
-            self.simulation_timer_id = GLib.timeout_add(3000, self._simulate_mouse_movement)
+            print(f"마우스 사각형 그리기 시작 (스텝 간격: {self.STEP_INTERVAL_MS}ms, 변당 시간: {self.SIDE_DURATION_MS}ms)")
+            self.square_step = 0 # 시작 시 단계 초기화
+            self.current_step_in_side = 0 # 시작 시 스텝 수 초기화
+            self.simulation_timer_id = GLib.timeout_add(self.STEP_INTERVAL_MS, self._simulate_mouse_movement)
 
     def StopNotify(self):
         if not self.notifying:
@@ -476,44 +477,60 @@ class InputReportCharacteristic(Characteristic):
         print(f'입력 리포트 ID {self.report_id}에 대한 알림 중지')
         self.notifying = False
 
-        # 실행 중인 마우스 시뮬레이션 중지
         if self.report_id == 1 and self.simulation_timer_id is not None:
-            print("마우스 이동 시뮬레이션 중지 중...")
+            print("마우스 사각형 그리기 시뮬레이션 중지 중...")
             GLib.source_remove(self.simulation_timer_id)
             self.simulation_timer_id = None
 
-        # keep-alive 타이머 중지
-        if self.keep_alive_timer_id is not None:
-            print("Keep-alive 타이머 중지 중...")
-            GLib.source_remove(self.keep_alive_timer_id)
-            self.keep_alive_timer_id = None
-
     def _simulate_mouse_movement(self):
-        """마우스 이동을 시뮬레이션하기 위해 타이머에 의해 호출됩니다."""
+        """0.5초마다 작은 이동을 반복하고 정지 리포트를 보내, 10초 동안 한 변을 그리고 다음 변으로 넘어갑니다."""
         if not self.notifying:
-            # 타이머가 올바르게 관리되면 발생하지 않아야 하지만, 예방 차원
             self.simulation_timer_id = None
             return False # 타이머 중지
 
-        # 현재 방향에 따라 이동량 계산
-        move_delta = 50 * self.mouse_move_direction
-        print(f"마우스 이동 시뮬레이션 ({move_delta}, {move_delta})")
-        # 리포트 형식: 버튼(1), dX(2), dY(2), 휠(1)
-        report = [
-            0, # 버튼 누르지 않음
-            # dX (리틀 엔디안)
-            move_delta & 0xFF, (move_delta >> 8) & 0xFF,
-            # dY (리틀 엔디안)
-            move_delta & 0xFF, (move_delta >> 8) & 0xFF,
-            0 # 휠 움직임 없음
+        dx = 0
+        dy = 0
+        side_name = ""
+
+        # 현재 단계(변)에 따라 이동 방향 결정
+        if self.square_step == 0: # 오른쪽
+            dx = self.MOVE_PER_STEP
+            side_name = "오른쪽"
+        elif self.square_step == 1: # 아래
+            dy = self.MOVE_PER_STEP
+            side_name = "아래"
+        elif self.square_step == 2: # 왼쪽
+            dx = -self.MOVE_PER_STEP
+            side_name = "왼쪽"
+        elif self.square_step == 3: # 위
+            dy = -self.MOVE_PER_STEP
+            side_name = "위"
+
+        print(f"사각형 그리기: {side_name} 방향 이동 ({dx}, {dy}) - 스텝 {self.current_step_in_side + 1}/{self.STEPS_PER_SIDE}")
+
+        # 이동 리포트 전송
+        move_report = [
+            0, # 버튼
+            dx & 0xFF, (dx >> 8) & 0xFF, # dX
+            dy & 0xFF, (dy >> 8) & 0xFF, # dY
+            0 # 휠
         ]
-        self.send_report(report)
+        self.send_report(move_report)
 
-        # 다음 이동을 위해 방향 반전
-        self.mouse_move_direction *= -1
+        # 중요: 이동 직후 정지 리포트(dx=0, dy=0) 전송
+        stop_report = [0, 0, 0, 0, 0, 0]
+        self.send_report(stop_report)
 
-        # 1초 대기
-        GLib.timeout_add(1000, lambda: None)
+        # 현재 변 내 스텝 수 증가
+        self.current_step_in_side += 1
+
+        # 현재 변의 모든 스텝을 완료했는지 확인
+        if self.current_step_in_side >= self.STEPS_PER_SIDE:
+            print(f"{side_name} 방향 그리기 완료. 다음 변으로 전환.")
+            # 다음 변으로 이동
+            self.square_step = (self.square_step + 1) % 4
+            # 현재 변 스텝 수 초기화
+            self.current_step_in_side = 0
 
         return True # 타이머 계속 실행
 
